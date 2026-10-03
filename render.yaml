@@ -1,0 +1,18 @@
+# Render Blueprint for the Digital Volunteer WhatsApp gateway.
+# A *background worker* (always on, no public URL). Free web services sleep,
+# which would drop the WhatsApp connection, so this needs a paid worker plan.
+services:
+  - type: worker
+    name: digital-volunteer-gateway
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: npm ci --workspace @crm/wa-gateway --include-workspace-root
+    startCommand: npm start --workspace @crm/wa-gateway
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

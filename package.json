@@ -1,0 +1,18 @@
+{
+  "name": "volunteer-crm",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "test:db": "npm run test -w @crm/db-tests",
+    "test:shared": "npm run test -w @crm/shared",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
