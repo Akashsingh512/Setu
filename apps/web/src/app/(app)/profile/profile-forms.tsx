@@ -1,11 +1,12 @@
 'use client';
 import { useActionState } from 'react';
+import { SEVA_DAY_LABELS, SEVA_DAYS, SEVA_INTEREST_SUGGESTIONS, SEVA_TIME_LABELS, SEVA_TIMES } from '@crm/shared';
 import { FormMessage, SubmitButton } from '@/components/form';
 import { PasswordInput } from '@/components/password-input';
-import { Field, Input, Select } from '@/components/ui';
+import { Field, Input, Select, Textarea } from '@/components/ui';
 import type { Course, Profile } from '@/lib/types';
 import { updatePassword } from '../../(auth)/actions';
-import { saveProfile } from './actions';
+import { saveProfile, saveSevaProfile } from './actions';
 
 export function ProfileForm({ profile, courses }: { profile: Profile; courses: Course[] }) {
   const [state, action] = useActionState(saveProfile, undefined);
@@ -56,6 +57,69 @@ export function PasswordForm() {
         <PasswordInput id="pw2" name="confirm" autoComplete="new-password" required />
       </Field>
       <SubmitButton variant="secondary">Update password</SubmitButton>
+    </form>
+  );
+}
+
+function CheckChip({ name, value, label, checked }: { name: string; value: string; label: string; checked: boolean }) {
+  return (
+    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-line-strong px-3 py-1 text-sm has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:checked]:text-accent">
+      <input type="checkbox" name={name} value={value} defaultChecked={checked} className="size-3.5 accent-accent" />
+      {label}
+    </label>
+  );
+}
+
+/** How this person serves. Shown to every member in the Sevak Directory. */
+export function SevaProfileForm({ profile, centres }: { profile: Profile; centres: string[] }) {
+  const [state, action] = useActionState(saveSevaProfile, undefined);
+  const suggested = new Set<string>(SEVA_INTEREST_SUGGESTIONS);
+  const other = profile.seva_interests.filter((i) => !suggested.has(i));
+  return (
+    <form action={action} className="flex flex-col gap-5">
+      <FormMessage state={state} />
+      <fieldset>
+        <legend className="mb-2 text-sm font-medium">Days available for seva</legend>
+        <div className="flex flex-wrap gap-2">
+          {SEVA_DAYS.map((d) => (
+            <CheckChip key={d} name="seva_days" value={d} label={SEVA_DAY_LABELS[d]} checked={profile.seva_days.includes(d)} />
+          ))}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend className="mb-2 text-sm font-medium">Time of day</legend>
+        <div className="flex flex-wrap gap-2">
+          {SEVA_TIMES.map((t) => (
+            <CheckChip key={t} name="seva_times" value={t} label={SEVA_TIME_LABELS[t]} checked={profile.seva_times.includes(t)} />
+          ))}
+        </div>
+      </fieldset>
+      <Field label="Availability note" htmlFor="s-note" hint="e.g. After 7 pm on weekdays, full day on Sundays">
+        <Input id="s-note" name="seva_note" maxLength={300} defaultValue={profile.seva_note ?? ''} />
+      </Field>
+      <Field label="Nearest centre" htmlFor="s-centre">
+        <Input id="s-centre" name="nearest_centre" maxLength={120} list="centre-options" defaultValue={profile.nearest_centre ?? ''} />
+        <datalist id="centre-options">
+          {centres.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
+      </Field>
+      <Field label="Address / area" htmlFor="s-address" hint="Visible to everyone in Setu. An area or locality is enough.">
+        <Textarea id="s-address" name="address" rows={2} maxLength={300} defaultValue={profile.address ?? ''} />
+      </Field>
+      <fieldset>
+        <legend className="mb-2 text-sm font-medium">Seva I&apos;m interested in</legend>
+        <div className="flex flex-wrap gap-2">
+          {SEVA_INTEREST_SUGGESTIONS.map((i) => (
+            <CheckChip key={i} name="seva_interests" value={i} label={i} checked={profile.seva_interests.includes(i)} />
+          ))}
+        </div>
+      </fieldset>
+      <Field label="Other seva interests" htmlFor="s-other" hint="Separate with commas.">
+        <Input id="s-other" name="seva_interests_other" defaultValue={other.join(', ')} />
+      </Field>
+      <SubmitButton>Save seva profile</SubmitButton>
     </form>
   );
 }

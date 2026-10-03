@@ -16,6 +16,12 @@ export interface Profile {
   timezone: string | null;
   approval_status: 'approved' | 'pending' | 'rejected';
   recommended_by: string | null;
+  seva_days: string[];
+  seva_times: string[];
+  seva_note: string | null;
+  nearest_centre: string | null;
+  address: string | null;
+  seva_interests: string[];
   last_login_at: string | null;
   last_seen_at: string | null;
   created_at: string;

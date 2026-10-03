@@ -122,9 +122,15 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
               <ButtonLink href="/leads/import" variant="secondary">
                 Import
               </ButtonLink>
+              <OfflineAddLink />
               <ButtonLink href="/leads/new">Add lead</ButtonLink>
             </div>
-          ) : undefined
+          ) : (
+            <div className="flex gap-2">
+              <OfflineAddLink />
+              <ButtonLink href="/leads/new">Add a lead I met</ButtonLink>
+            </div>
+          )
         }
       />
 
@@ -183,8 +189,10 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         <Card>
           <EmptyState
             title={staff ? 'No leads match' : 'No leads assigned to you'}
-            description={staff ? 'Try clearing filters, or add a lead.' : 'When a teacher assigns leads to you, they will appear here.'}
-            action={staff ? <ButtonLink href="/leads/new">Add lead</ButtonLink> : undefined}
+            description={
+              staff ? 'Try clearing filters, or add a lead.' : 'When a teacher assigns leads to you, or you add someone you met, they appear here.'
+            }
+            action={<ButtonLink href="/leads/new">{staff ? 'Add lead' : 'Add a lead I met'}</ButtonLink>}
           />
         </Card>
       ) : staff ? (
@@ -239,4 +247,16 @@ function statusTone(code: string, s: LeadStatus | undefined): LeadCardData['stat
   if (code === 'new' || code === 'assigned') return 'info';
   if (code === 'interested') return 'accent';
   return 'warn';
+}
+
+/** Plain <a>: a full page load, which works even when the page comes from the phone's offline copy. */
+function OfflineAddLink() {
+  return (
+    <a
+      href="/capture"
+      className="inline-flex min-h-10 items-center justify-center rounded-lg border border-line-strong bg-surface px-4 text-sm font-medium hover:bg-canvas"
+    >
+      Add offline
+    </a>
+  );
 }

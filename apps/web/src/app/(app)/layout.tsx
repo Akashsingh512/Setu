@@ -8,6 +8,7 @@ import { PushPrompt } from '@/components/push';
 import { SignOutButton } from '@/components/sign-out-button';
 import { getDvAccess } from '@/lib/dv';
 import { SetuMark } from '@/components/brand';
+import { OfflineLeadSync } from '@/components/offline-leads';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -55,6 +56,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       <MobileNav role={profile.role} unread={unread ?? 0} />
       <RealtimeRefresh userId={profile.id} />
+      <OfflineLeadSync userId={profile.id} role={profile.role} teamId={profile.team_id} />
     </div>
   );
 }

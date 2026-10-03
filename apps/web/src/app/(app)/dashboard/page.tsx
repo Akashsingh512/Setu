@@ -188,29 +188,43 @@ async function StaffDashboard({ profile, settings }: { profile: Profile; setting
       </div>
 
       <Card className="mt-6">
-        <CardHeader title="Recent assignment activity" />
-        {(recent.data as unknown as RecentRow[] | null)?.length ? (
-          <ul className="divide-y divide-line text-sm">
-            {(recent.data as unknown as RecentRow[]).map((a) => {
-              const who = a.data.assignee_id ? (names.get(a.data.assignee_id) ?? 'a volunteer') : null;
-              const by = a.actor_id ? (names.get(a.actor_id) ?? 'staff') : 'System (deadline missed)';
-              return (
-                <li key={a.id} className="flex flex-wrap items-baseline justify-between gap-2 px-5 py-3">
-                  <span>
-                    <Link href={`/leads/${a.lead_id}`} className="font-medium hover:underline">
-                      {a.lead?.full_name ?? 'Lead'}
-                    </Link>{' '}
-                    {a.type === 'assigned' ? <>assigned to {who}</> : <>unassigned</>}
-                    <span className="text-ink-muted"> · by {by}</span>
-                  </span>
-                  <span className="text-ink-muted">{relativeTime(a.created_at)}</span>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <EmptyState title="No assignments yet" description="Assign leads from the Leads page." />
-        )}
+        {/* Collapsed by default: useful for checking, but long. */}
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 [&::-webkit-details-marker]:hidden">
+            <h2 className="text-base font-semibold">
+              Recent assignment activity{' '}
+              <span className="font-normal text-ink-muted">({(recent.data as unknown as RecentRow[] | null)?.length ?? 0})</span>
+            </h2>
+            <span className="shrink-0 text-sm text-accent">
+              <span className="group-open:hidden">Show ▾</span>
+              <span className="hidden group-open:inline">Hide ▴</span>
+            </span>
+          </summary>
+          <div className="border-t border-line">
+            {(recent.data as unknown as RecentRow[] | null)?.length ? (
+              <ul className="divide-y divide-line text-sm">
+                {(recent.data as unknown as RecentRow[]).map((a) => {
+                  const who = a.data.assignee_id ? (names.get(a.data.assignee_id) ?? 'a volunteer') : null;
+                  const by = a.actor_id ? (names.get(a.actor_id) ?? 'staff') : 'System (deadline missed)';
+                  return (
+                    <li key={a.id} className="flex flex-wrap items-baseline justify-between gap-2 px-5 py-3">
+                      <span>
+                        <Link href={`/leads/${a.lead_id}`} className="font-medium hover:underline">
+                          {a.lead?.full_name ?? 'Lead'}
+                        </Link>{' '}
+                        {a.type === 'assigned' ? <>assigned to {who}</> : <>unassigned</>}
+                        <span className="text-ink-muted"> · by {by}</span>
+                      </span>
+                      <span className="text-ink-muted">{relativeTime(a.created_at)}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <EmptyState title="No assignments yet" description="Assign leads from the Leads page." />
+            )}
+          </div>
+        </details>
       </Card>
     </>
   );

@@ -12,6 +12,8 @@ export default function manifest(): MetadataRoute.Manifest {
     display: 'standalone',
     background_color: '#faf8f5',
     theme_color: '#b45309',
+    // Long-press the app icon: straight to adding a lead, which also works offline.
+    shortcuts: [{ name: 'Add lead', short_name: 'Add lead', url: '/capture', icons: [{ src: '/icon-192.png', sizes: '192x192' }] }],
     icons: [
       { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },

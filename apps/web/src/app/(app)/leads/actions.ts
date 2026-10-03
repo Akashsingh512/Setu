@@ -59,6 +59,31 @@ export async function createLead(_: ActionState | undefined, formData: FormData)
   redirect(`/leads/${data.id}`);
 }
 
+/** Volunteers add a lead they met: their own team, checked again in the database (volunteer_add_lead). */
+export async function volunteerCreateLead(_: ActionState | undefined, formData: FormData): Promise<ActionState> {
+  const settings = await getOrgSettings();
+  const parsed = leadInputSchema(settings.default_phone_country)
+    .omit({ team_id: true, met_by_id: true })
+    .safeParse(leadFormValues(formData));
+  if (!parsed.success) return { error: 'Please fix the highlighted fields.', fieldErrors: fieldErrors(parsed.error) };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('volunteer_add_lead', {
+    p_lead: parsed.data,
+    p_assign_to_me: formData.get('assign_to_me') === 'on',
+  });
+  if (error) return { error: friendlyError(error) };
+  const r = data as { id?: string; duplicate?: boolean; assigned_to_me?: boolean };
+  if (r.duplicate) {
+    return {
+      error: 'This person is already in Setu, so they were not added again. Your teacher has been told that you met them.',
+    };
+  }
+  revalidatePath('/leads');
+  if (r.assigned_to_me && r.id) redirect(`/leads/${r.id}`);
+  return { ok: true, message: 'Lead added. Your teacher will assign someone to follow up.' };
+}
+
 export async function updateLead(leadId: string, _: ActionState | undefined, formData: FormData): Promise<ActionState> {
   const settings = await getOrgSettings();
   const parsed = leadInputSchema(settings.default_phone_country).safeParse(leadFormValues(formData));

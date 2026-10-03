@@ -9,6 +9,7 @@ export type WebModule =
   | 'users'
   | 'courses'
   | 'upcoming'
+  | 'directory'
   | 'reports'
   | 'notifications'
   | 'digital_volunteer'
@@ -28,6 +29,7 @@ const ALL: Record<WebModule, NavItem> = {
   users: { module: 'users', label: 'Teachers / Users', href: '/users' },
   courses: { module: 'courses', label: 'Courses', href: '/courses' },
   upcoming: { module: 'upcoming', label: 'Upcoming Programs', href: '/upcoming' },
+  directory: { module: 'directory', label: 'Sevak Directory', href: '/directory' },
   reports: { module: 'reports', label: 'Reports', href: '/reports' },
   notifications: { module: 'notifications', label: 'Notifications', href: '/notifications' },
   digital_volunteer: { module: 'digital_volunteer', label: 'Digital Volunteer', href: '/digital-volunteer' },
@@ -36,9 +38,9 @@ const ALL: Record<WebModule, NavItem> = {
 };
 
 const BY_ROLE: Record<Role, WebModule[]> = {
-  super_admin: ['dashboard', 'leads', 'volunteers', 'users', 'courses', 'upcoming', 'reports', 'notifications', 'settings', 'profile'],
-  teacher: ['dashboard', 'leads', 'volunteers', 'courses', 'upcoming', 'reports', 'notifications', 'profile'],
-  volunteer: ['dashboard', 'leads', 'upcoming', 'notifications', 'profile'],
+  super_admin: ['dashboard', 'leads', 'volunteers', 'users', 'courses', 'upcoming', 'directory', 'reports', 'notifications', 'settings', 'profile'],
+  teacher: ['dashboard', 'leads', 'volunteers', 'courses', 'upcoming', 'directory', 'reports', 'notifications', 'profile'],
+  volunteer: ['dashboard', 'leads', 'upcoming', 'directory', 'notifications', 'profile'],
 };
 
 /**

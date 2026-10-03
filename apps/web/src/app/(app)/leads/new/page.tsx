@@ -1,14 +1,31 @@
 import type { Metadata } from 'next';
+import { isStaff } from '@crm/shared';
 import { Alert, PageHeader } from '@/components/ui';
-import { requireStaff } from '@/lib/auth';
+import { requireProfile } from '@/lib/auth';
 import { getCourses, getTeams, getVisibleProfiles } from '@/lib/data';
-import { createLead } from '../actions';
+import { createLead, volunteerCreateLead } from '../actions';
 import { LeadForm } from '../lead-form';
 
 export const metadata: Metadata = { title: 'Add lead' };
 
 export default async function NewLeadPage() {
-  const profile = await requireStaff();
+  const profile = await requireProfile();
+
+  if (!isStaff(profile.role)) {
+    const courses = await getCourses();
+    return (
+      <>
+        <PageHeader title="Add a lead" description="Someone you met who is interested. Fields marked * are required." />
+        <OfflineHint />
+        {profile.team_id ? (
+          <LeadForm action={volunteerCreateLead} courses={courses} teams={[]} fixedTeamId={profile.team_id} volunteerMode />
+        ) : (
+          <Alert tone="warn">You are not in a team yet. Ask your teacher to add you to one, then you can add leads.</Alert>
+        )}
+      </>
+    );
+  }
+
   const [courses, teams, profiles] = await Promise.all([getCourses(), getTeams(), getVisibleProfiles()]);
   const volunteers = profiles
     .filter((p) => p.role === 'volunteer' && p.status === 'active')
@@ -17,6 +34,7 @@ export default async function NewLeadPage() {
   return (
     <>
       <PageHeader title="Add lead" description="Fields marked * are required." />
+      <OfflineHint />
       {teams.length === 0 ? (
         <Alert tone="warn">Create a team first (Users page) before adding leads.</Alert>
       ) : (
@@ -29,5 +47,17 @@ export default async function NewLeadPage() {
         />
       )}
     </>
+  );
+}
+
+function OfflineHint() {
+  return (
+    <p className="-mt-4 mb-4 text-sm text-ink-muted">
+      Weak or no signal where you are?{' '}
+      <a href="/capture" className="text-accent underline">
+        Use offline add
+      </a>
+      : leads are saved on your phone and sent when you are back online.
+    </p>
   );
 }

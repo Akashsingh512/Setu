@@ -151,7 +151,7 @@ describe('validation schemas', () => {
 
 describe('navigation', () => {
   it('shows each role only its modules', () => {
-    expect(navForRole('volunteer').map((n) => n.label)).toEqual(['Dashboard', 'My Leads', 'Upcoming Programs', 'Notifications', 'Profile']);
+    expect(navForRole('volunteer').map((n) => n.label)).toEqual(['Dashboard', 'My Leads', 'Upcoming Programs', 'Sevak Directory', 'Notifications', 'Profile']);
     expect(navForRole('teacher').map((n) => n.module)).not.toContain('settings');
     expect(navForRole('super_admin').map((n) => n.module)).toContain('users');
   });

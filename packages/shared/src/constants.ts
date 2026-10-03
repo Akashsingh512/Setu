@@ -94,3 +94,27 @@ export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 /** Maximum leads per assign_leads call (enforced in the database too). */
 export const MAX_BULK_ASSIGN = 2000;
+
+// Seva profile (mirrors the checks on public.profiles).
+export const SEVA_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+export type SevaDay = (typeof SEVA_DAYS)[number];
+export const SEVA_DAY_LABELS: Record<SevaDay, string> = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
+export const SEVA_TIMES = ['morning', 'afternoon', 'evening'] as const;
+export type SevaTime = (typeof SEVA_TIMES)[number];
+export const SEVA_TIME_LABELS: Record<SevaTime, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
+/** Suggested seva areas; people can also add their own. */
+export const SEVA_INTEREST_SUGGESTIONS = [
+  'Calling leads',
+  'Course organising',
+  'Teaching support',
+  'Satsang & music',
+  'Event setup & decoration',
+  'Registration desk',
+  'Kitchen & prasad',
+  'Social media & design',
+  'Photography & video',
+  'Technology',
+  'Transport',
+  'Fundraising',
+  'Rural & social projects',
+] as const;

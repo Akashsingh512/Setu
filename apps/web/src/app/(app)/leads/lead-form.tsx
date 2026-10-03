@@ -14,6 +14,7 @@ export function LeadForm({
   teams,
   fixedTeamId,
   volunteers,
+  volunteerMode = false,
 }: {
   action: (state: ActionState | undefined, formData: FormData) => Promise<ActionState>;
   lead?: Lead;
@@ -21,6 +22,8 @@ export function LeadForm({
   teams: Team[];
   fixedTeamId: string | null;
   volunteers?: { id: string; name: string }[];
+  /** A volunteer adding someone they met: no team, owner or duplicate lookup (they can't see other leads). */
+  volunteerMode?: boolean;
 }) {
   const [state, formAction] = useActionState(action, undefined);
   const [dupes, setDupes] = useState<DuplicateCheck | null>(null);
@@ -28,6 +31,7 @@ export function LeadForm({
 
   async function onPhoneBlur(e: React.FocusEvent<HTMLInputElement>) {
     const value = e.target.value.trim();
+    if (volunteerMode) return;
     setDupes(value.length >= 6 ? await checkDuplicates(value, lead?.id) : null);
   }
 
@@ -88,9 +92,11 @@ export function LeadForm({
         <Field label="Event / place" htmlFor="source_detail" error={fe.source_detail}>
           <Input id="source_detail" name="source_detail" defaultValue={lead?.source_detail ?? ''} placeholder="e.g. Sunday satsang, City mall stall" />
         </Field>
-        <Field label="Met by" htmlFor="met_by_name">
-          <Input id="met_by_name" name="met_by_name" defaultValue={lead?.met_by_name ?? ''} />
-        </Field>
+        {volunteerMode ? null : (
+          <Field label="Met by" htmlFor="met_by_name">
+            <Input id="met_by_name" name="met_by_name" defaultValue={lead?.met_by_name ?? ''} />
+          </Field>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Date met" htmlFor="met_on" error={fe.met_on}>
             <Input id="met_on" name="met_on" type="date" defaultValue={lead?.met_on ?? ''} />
@@ -116,7 +122,15 @@ export function LeadForm({
             ))}
           </Select>
         </Field>
-        {fixedTeamId ? (
+        {volunteerMode ? (
+          <label className="flex items-start gap-2 self-end text-sm">
+            <input type="checkbox" name="assign_to_me" defaultChecked className="mt-0.5 size-4 accent-accent" />
+            <span>
+              I&apos;ll follow up with this person myself
+              <span className="block text-ink-muted">Untick to hand them to your teacher.</span>
+            </span>
+          </label>
+        ) : fixedTeamId ? (
           <input type="hidden" name="team_id" value={lead?.team_id ?? fixedTeamId} />
         ) : (
           <Field label="Team *" htmlFor="team_id" error={fe.team_id}>
