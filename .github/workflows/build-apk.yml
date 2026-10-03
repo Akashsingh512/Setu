@@ -1,0 +1,81 @@
+name: Build Android APK (Setu CRM)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build Setu Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Create Web static assets folder
+        run: |
+          mkdir -p apps/mobile/www
+          cp -r apps/web/public/* apps/mobile/www/ 2>/dev/null || true
+
+      - name: Add Capacitor Android platform
+        run: |
+          cd apps/mobile
+          npx cap add android || true
+          npx cap copy android || true
+          npx cap sync android || true
+
+      - name: Copy App Logo to Android launcher icons
+        run: |
+          mkdir -p apps/mobile/android/app/src/main/res/drawable
+          cp apps/web/public/logo.jpg apps/mobile/android/app/src/main/res/drawable/logo.jpg || true
+
+      - name: Build Android APK with Gradle
+        run: |
+          cd apps/mobile/android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Rename & Prepare APK
+        run: |
+          mkdir -p build-output
+          cp apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk build-output/Setu-CRM-v1.0.apk
+
+      - name: Upload APK as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Setu-CRM-Android-APK
+          path: build-output/Setu-CRM-v1.0.apk
+
+      - name: Create GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: v1.0.0
+          name: Setu CRM Android Release v1.0
+          body: |
+            🎉 **Setu - Art of Living Volunteer CRM (Android App)**
+            
+            Download and install `Setu-CRM-v1.0.apk` directly on your Android device.
+          files: build-output/Setu-CRM-v1.0.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
