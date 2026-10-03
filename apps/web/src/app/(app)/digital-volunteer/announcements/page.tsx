@@ -5,6 +5,7 @@ import { getProfileNames } from '@/lib/data';
 import { requireDv } from '@/lib/dv';
 import { formatDateTime, relativeTime, toLocalInputValue } from '@/lib/format';
 import { createClient } from '@/lib/supabase/server';
+import { introTalkMessage, type IntroTalk } from '../intro-talks/message';
 import { AnnouncementActions, NewAnnouncement, type GroupOption } from './controls';
 
 export const metadata: Metadata = { title: 'Announcements' };
@@ -47,8 +48,9 @@ const STATUS: Record<Announcement['status'], { label: string; tone: 'ok' | 'warn
   cancelled: { label: 'Cancelled', tone: 'neutral' },
 };
 
-export default async function AnnouncementsPage() {
+export default async function AnnouncementsPage({ searchParams }: { searchParams: Promise<{ intro?: string }> }) {
   const access = await requireDv('schedule_announcements');
+  const { intro } = await searchParams;
   const [profile, settings, names, supabase] = await Promise.all([requireProfile(), getOrgSettings(), getProfileNames(), createClient()]);
 
   const [{ data: rows }, { data: targets }, { data: groups }] = await Promise.all([
@@ -81,6 +83,10 @@ export default async function AnnouncementsPage() {
   ]);
   const sendsOf = (id: string) => ((outbox ?? []) as OutboxRow[]).filter((o) => o.announcement_id === id);
   const targetsOf = (id: string) => ((targets ?? []) as Target[]).filter((t) => t.announcement_id === id);
+  const introTalk =
+    intro && /^[0-9a-f-]{36}$/i.test(intro)
+      ? ((await supabase.from('dv_intro_talks').select('*').eq('id', intro).maybeSingle()).data as IntroTalk | null)
+      : null;
   // eslint-disable-next-line react-hooks/purity -- server component: rendered once per request
   const defaultSendAt = toLocalInputValue(new Date(Date.now() + 3_600_000), settings.default_timezone);
 
@@ -173,8 +179,21 @@ export default async function AnnouncementsPage() {
 
       <section>
         <Card>
-          <CardHeader title="New announcement" description="Sent to the chosen groups at the time you pick, after a second person approves it." />
-          <NewAnnouncement groups={options} defaultSendAt={defaultSendAt} />
+          <CardHeader
+            title={introTalk ? 'Announce intro talk' : 'New announcement'}
+            description={
+              introTalk
+                ? 'The message is written for you: check it, pick the groups and when to send.'
+                : 'Sent to the chosen groups at the time you pick, after a second person approves it.'
+            }
+          />
+          <NewAnnouncement
+            key={introTalk?.id ?? 'new'}
+            groups={options}
+            defaultSendAt={defaultSendAt}
+            initialTitle={introTalk ? `Intro talk: ${introTalk.name}` : ''}
+            initialBody={introTalk ? introTalkMessage(introTalk, settings.default_timezone) : ''}
+          />
         </Card>
       </section>
     </div>

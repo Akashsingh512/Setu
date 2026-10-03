@@ -38,12 +38,23 @@ const POSTER_TYPES: Record<string, string> = {
   'image/webp': 'webp',
 };
 
-export function NewAnnouncement({ groups, defaultSendAt }: { groups: GroupOption[]; defaultSendAt: string }) {
+export function NewAnnouncement({
+  groups,
+  defaultSendAt,
+  initialTitle = '',
+  initialBody = '',
+}: {
+  groups: GroupOption[];
+  defaultSendAt: string;
+  /** Prefilled from an intro talk (Intro talks > Announce in groups). */
+  initialTitle?: string;
+  initialBody?: string;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [state, setState] = useState<ActionState | undefined>();
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
+  const [title, setTitle] = useState(initialTitle);
+  const [body, setBody] = useState(initialBody);
   const [sendAt, setSendAt] = useState(defaultSendAt);
   const [poster, setPoster] = useState<File | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());

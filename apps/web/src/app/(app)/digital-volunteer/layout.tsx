@@ -12,6 +12,7 @@ export default async function DigitalVolunteerLayout({ children }: { children: R
     { href: '/digital-volunteer/responses', label: 'Course responses', show: access.can('manage_content') },
     { href: '/digital-volunteer/seva', label: 'Seva requests', show: access.can('assign_seva') },
     { href: '/digital-volunteer/announcements', label: 'Announcements', show: access.can('schedule_announcements') },
+    { href: '/digital-volunteer/intro-talks', label: 'Intro talks', show: access.can('schedule_announcements') },
     { href: '/digital-volunteer/reports', label: 'Reports', show: access.can('view_audit') },
     { href: '/digital-volunteer/seva/limits', label: 'Seva limits', show: access.can('manage_integration') },
     { href: '/digital-volunteer/account', label: 'WhatsApp account', show: access.can('manage_integration') },
