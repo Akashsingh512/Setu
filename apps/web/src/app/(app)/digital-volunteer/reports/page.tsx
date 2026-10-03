@@ -1,61 +1,125 @@
-import type { Metadata } from 'next';
-import Link from 'next/link';
-import { Alert, Card, CardHeader, cn, EmptyState, Stat } from '@/components/ui';
-import { getOrgSettings } from '@/lib/auth';
-import { requireDv } from '@/lib/dv';
-import { formatDate, formatDateTime } from '@/lib/format';
-import { createClient } from '@/lib/supabase/server';
+import type { Metadata } from "next";
+import Link from "next/link";
+import { Alert, Card, CardHeader, cn, EmptyState, Stat } from "@/components/ui";
+import { getOrgSettings } from "@/lib/auth";
+import { requireDv } from "@/lib/dv";
+import { formatDate, formatDateTime } from "@/lib/format";
+import { createClient } from "@/lib/supabase/server";
 
-export const metadata: Metadata = { title: 'Digital Volunteer reports' };
+export const metadata: Metadata = { title: "Digital Volunteer reports" };
 
 type Report = {
-  messages: { in: number; out: number; in_groups: number; in_direct: number; needs_review: number };
+  messages: {
+    in: number;
+    out: number;
+    in_groups: number;
+    in_direct: number;
+    needs_review: number;
+  };
   by_day: { day: string; in: number; out: number }[];
   intents: Record<string, number>;
-  replies: Record<'automatic' | 'approved_suggestions' | 'written_by_people' | 'seva_numbers' | 'announcements' | 'failed' | 'discarded', number>;
-  seva: Record<'requests' | 'fulfilled' | 'automatic' | 'rejected' | 'no_leads' | 'pending' | 'leads_assigned', number>;
+  replies: Record<
+    | "automatic"
+    | "approved_suggestions"
+    | "written_by_people"
+    | "seva_numbers"
+    | "announcements"
+    | "failed"
+    | "discarded",
+    number
+  >;
+  seva: Record<
+    | "requests"
+    | "fulfilled"
+    | "automatic"
+    | "rejected"
+    | "no_leads"
+    | "pending"
+    | "leads_assigned",
+    number
+  >;
   announcements: Record<string, number>;
   lead_replies: number;
   groups: { name: string; in: number }[];
 };
-type AuditRow = { id: number; created_at: string; actor_name: string; action: string; entity_type: string; data: Record<string, unknown> };
-
-const PERIODS = { '7': 'Last 7 days', '30': 'Last 30 days', '90': 'Last 90 days' } as const;
-const INTENTS: Record<string, string> = { course_info: 'Course questions', seva_request: 'Seva requests', none: 'Other messages', 'not analysed': 'Not analysed' };
-const ACTIONS: Record<string, string> = {
-  'dv.permissions_changed': 'Operator access changed',
-  'dv.switches_changed': 'Safety switches changed',
-  'dv.dm_settings_changed': 'Direct chat settings changed',
-  'dv.command': 'Gateway command',
-  'dv.group_updated': 'Group settings changed',
-  'dv.message_queued': 'Message sent by a person',
-  'dv.message_cancelled': 'Message cancelled',
-  'dv.message_dismissed': 'Message marked handled',
-  'dv.suggestion_approved': 'Suggested reply approved',
-  'dv.template_saved': 'Course response edited',
-  'dv.followup_confirmed': 'Follow-up confirmed from WhatsApp',
-  'dv.announcement_created': 'Announcement created',
-  'dv.announcement_approved': 'Announcement approved',
-  'dv.announcement_rejected': 'Announcement not approved',
-  'dv.announcement_cancelled': 'Announcement cancelled',
-  'dv.seva_identified': 'Seva requester identified',
-  'dv.sender_unlinked': 'Remembered sender removed',
+type AuditRow = {
+  id: number;
+  created_at: string;
+  actor_name: string;
+  action: string;
+  entity_type: string;
+  data: Record<string, unknown>;
 };
 
-export default async function DvReportsPage({ searchParams }: { searchParams: Promise<{ days?: string }> }) {
-  await requireDv('view_audit');
+const PERIODS = {
+  "7": "Last 7 days",
+  "30": "Last 30 days",
+  "90": "Last 90 days",
+} as const;
+const INTENTS: Record<string, string> = {
+  course_info: "Course questions",
+  seva_request: "Seva requests",
+  none: "Other messages",
+  "not analysed": "Not analysed",
+};
+const ACTIONS: Record<string, string> = {
+  "dv.permissions_changed": "Operator access changed",
+  "dv.switches_changed": "Safety switches changed",
+  "dv.dm_settings_changed": "Direct chat settings changed",
+  "dv.command": "Gateway command",
+  "dv.group_updated": "Group settings changed",
+  "dv.message_queued": "Message sent by a person",
+  "dv.message_cancelled": "Message cancelled",
+  "dv.message_dismissed": "Message marked handled",
+  "dv.suggestion_approved": "Suggested reply approved",
+  "dv.template_saved": "Course response edited",
+  "dv.followup_confirmed": "Follow-up confirmed from WhatsApp",
+  "dv.announcement_created": "Announcement created",
+  "dv.announcement_approved": "Announcement approved",
+  "dv.announcement_rejected": "Announcement not approved",
+  "dv.announcement_cancelled": "Announcement cancelled",
+  "dv.seva_identified": "Seva requester identified",
+  "dv.seva_assigned": "Seva leads assigned",
+  "dv.seva_rejected": "Seva request declined",
+  "dv.seva_declined": "Seva request declined",
+  "dv.seva_no_leads": "Seva request: no leads available",
+  "dv.seva_revoked": "Seva assignment undone",
+  "dv.seva_limit_changed": "Seva limit changed",
+  "dv.seva_settings_changed": "Seva settings changed",
+  "dv.seva_whatsapp_decision": "Seva request decided on WhatsApp",
+  "dv.whatsapp_approver_changed": "WhatsApp approvers changed",
+  "dv.sender_unlinked": "Remembered sender removed",
+};
+
+export default async function DvReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ days?: string }>;
+}) {
+  await requireDv("view_audit");
   const { days: raw } = await searchParams;
-  const days = raw && raw in PERIODS ? (raw as keyof typeof PERIODS) : '7';
-  const [settings, supabase] = await Promise.all([getOrgSettings(), createClient()]);
+  const days = raw && raw in PERIODS ? (raw as keyof typeof PERIODS) : "7";
+  const [settings, supabase] = await Promise.all([
+    getOrgSettings(),
+    createClient(),
+  ]);
   // eslint-disable-next-line react-hooks/purity -- server component: rendered once per request
   const to = new Date(Date.now() + 60_000);
   const from = new Date(to.getTime() - Number(days) * 86_400_000);
 
   const [{ data, error }, { data: audit }] = await Promise.all([
-    supabase.rpc('dv_report', { p_from: from.toISOString(), p_to: to.toISOString() }),
-    supabase.rpc('dv_audit_log', { p_limit: 100 }),
+    supabase.rpc("dv_report", {
+      p_from: from.toISOString(),
+      p_to: to.toISOString(),
+    }),
+    supabase.rpc("dv_audit_log", { p_limit: 100 }),
   ]);
-  if (error || !data) return <Alert>Could not load the report. Run the latest database migration.</Alert>;
+  if (error || !data)
+    return (
+      <Alert>
+        Could not load the report. Run the latest database migration.
+      </Alert>
+    );
   const r = data as Report;
   const maxDay = Math.max(1, ...r.by_day.map((d) => d.in + d.out));
 
@@ -66,8 +130,13 @@ export default async function DvReportsPage({ searchParams }: { searchParams: Pr
           <Link
             key={k}
             href={`/digital-volunteer/reports?days=${k}`}
-            aria-current={k === days ? 'page' : undefined}
-            className={cn('rounded-full border px-3 py-1', k === days ? 'border-accent bg-accent-soft text-accent' : 'border-line text-ink-muted hover:text-ink')}
+            aria-current={k === days ? "page" : undefined}
+            className={cn(
+              "rounded-full border px-3 py-1",
+              k === days
+                ? "border-accent bg-accent-soft text-accent"
+                : "border-line text-ink-muted hover:text-ink",
+            )}
           >
             {PERIODS[k]}
           </Link>
@@ -80,12 +149,19 @@ export default async function DvReportsPage({ searchParams }: { searchParams: Pr
         <Stat label="Lead replies logged" value={r.lead_replies} />
         <Stat label="Seva leads assigned" value={r.seva.leads_assigned} />
         <Stat label="Announcements sent" value={r.replies.announcements} />
-        <Stat label="Failed to send" value={r.replies.failed} tone={r.replies.failed ? 'danger' : undefined} />
+        <Stat
+          label="Failed to send"
+          value={r.replies.failed}
+          tone={r.replies.failed ? "danger" : undefined}
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader title="Messages per day" description="Incoming and outgoing" />
+          <CardHeader
+            title="Messages per day"
+            description="Incoming and outgoing"
+          />
           {r.by_day.length ? (
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-ink-muted">
@@ -101,13 +177,25 @@ export default async function DvReportsPage({ searchParams }: { searchParams: Pr
               <tbody className="divide-y divide-line">
                 {r.by_day.map((d) => (
                   <tr key={d.day}>
-                    <td className="px-5 py-1.5 whitespace-nowrap">{formatDate(d.day)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{d.in}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{d.out}</td>
+                    <td className="px-5 py-1.5 whitespace-nowrap">
+                      {formatDate(d.day)}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">
+                      {d.in}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">
+                      {d.out}
+                    </td>
                     <td className="px-5 py-1.5" aria-hidden="true">
                       <div className="flex h-2 overflow-hidden rounded-full bg-canvas">
-                        <div className="bg-accent" style={{ width: `${(d.in / maxDay) * 100}%` }} />
-                        <div className="bg-accent/40" style={{ width: `${(d.out / maxDay) * 100}%` }} />
+                        <div
+                          className="bg-accent"
+                          style={{ width: `${(d.in / maxDay) * 100}%` }}
+                        />
+                        <div
+                          className="bg-accent/40"
+                          style={{ width: `${(d.out / maxDay) * 100}%` }}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -140,11 +228,17 @@ export default async function DvReportsPage({ searchParams }: { searchParams: Pr
             <dt>Sent automatically</dt>
             <dd className="text-right tabular-nums">{r.replies.automatic}</dd>
             <dt>Suggested, approved by a person</dt>
-            <dd className="text-right tabular-nums">{r.replies.approved_suggestions}</dd>
+            <dd className="text-right tabular-nums">
+              {r.replies.approved_suggestions}
+            </dd>
             <dt>Written by a person</dt>
-            <dd className="text-right tabular-nums">{r.replies.written_by_people}</dd>
+            <dd className="text-right tabular-nums">
+              {r.replies.written_by_people}
+            </dd>
             <dt>Seva lead details</dt>
-            <dd className="text-right tabular-nums">{r.replies.seva_numbers}</dd>
+            <dd className="text-right tabular-nums">
+              {r.replies.seva_numbers}
+            </dd>
             <dt>Discarded or cancelled</dt>
             <dd className="text-right tabular-nums">{r.replies.discarded}</dd>
           </dl>
@@ -174,7 +268,7 @@ export default async function DvReportsPage({ searchParams }: { searchParams: Pr
             <dl className="grid grid-cols-[1fr_auto] gap-y-1.5 px-5 py-4 text-sm">
               {r.groups.map((g) => (
                 <div key={g.name} className="contents">
-                  <dt className="truncate">{g.name || 'Unnamed group'}</dt>
+                  <dt className="truncate">{g.name || "Unnamed group"}</dt>
                   <dd className="text-right tabular-nums">{g.in}</dd>
                 </div>
               ))}
@@ -186,25 +280,62 @@ export default async function DvReportsPage({ searchParams }: { searchParams: Pr
       </div>
 
       <Card>
-        <CardHeader title="Audit log" description="Every change to Digital Volunteer settings and every human action, newest first (last 100)." />
-        {(audit as AuditRow[] | null)?.length ? (
-          <ol className="divide-y divide-line text-sm">
-            {(audit as AuditRow[]).map((a) => (
-              <li key={a.id} className="flex flex-wrap justify-between gap-2 px-5 py-2.5">
-                <span>
-                  <span className="font-medium">{ACTIONS[a.action] ?? a.action}</span>
-                  <span className="text-ink-muted"> · {a.actor_name}</span>
-                  {typeof a.data.name === 'string' && a.data.name ? <span className="text-ink-muted"> · {a.data.name}</span> : null}
-                  {typeof a.data.title === 'string' ? <span className="text-ink-muted"> · {a.data.title}</span> : null}
-                  {typeof a.data.command === 'string' ? <span className="text-ink-muted"> · {a.data.command}</span> : null}
-                </span>
-                <span className="text-ink-muted">{formatDateTime(a.created_at, settings.default_timezone)}</span>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <EmptyState title="Nothing recorded yet" />
-        )}
+        {/* Collapsed by default: it is long and only needed when checking who did what. */}
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-start justify-between gap-4 px-5 py-4 [&::-webkit-details-marker]:hidden">
+            <div>
+              <h2 className="text-base font-semibold">Audit log</h2>
+              <p className="mt-0.5 text-sm text-ink-muted">
+                Every change to Digital Volunteer settings and every human
+                action, newest first (
+                {(audit as AuditRow[] | null)?.length ?? 0} of the last 100).
+              </p>
+            </div>
+            <span className="shrink-0 text-sm text-accent">
+              <span className="group-open:hidden">Show ▾</span>
+              <span className="hidden group-open:inline">Hide ▴</span>
+            </span>
+          </summary>
+          <div className="border-t border-line">
+            {(audit as AuditRow[] | null)?.length ? (
+              <ol className="divide-y divide-line text-sm">
+                {(audit as AuditRow[]).map((a) => (
+                  <li
+                    key={a.id}
+                    className="flex flex-wrap justify-between gap-2 px-5 py-2.5"
+                  >
+                    <span>
+                      <span className="font-medium">
+                        {ACTIONS[a.action] ?? a.action}
+                      </span>
+                      <span className="text-ink-muted"> · {a.actor_name}</span>
+                      {typeof a.data.name === "string" && a.data.name ? (
+                        <span className="text-ink-muted"> · {a.data.name}</span>
+                      ) : null}
+                      {typeof a.data.title === "string" ? (
+                        <span className="text-ink-muted">
+                          {" "}
+                          · {a.data.title}
+                        </span>
+                      ) : null}
+                      {typeof a.data.command === "string" ? (
+                        <span className="text-ink-muted">
+                          {" "}
+                          · {a.data.command}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="text-ink-muted">
+                      {formatDateTime(a.created_at, settings.default_timezone)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <EmptyState title="Nothing recorded yet" />
+            )}
+          </div>
+        </details>
       </Card>
     </div>
   );
