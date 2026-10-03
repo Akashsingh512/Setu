@@ -8,11 +8,14 @@ ECO="$ROOT/current/deploy/ecosystem.config.cjs"
 
 case "${1:-help}" in
   status)
+    # shared/ is readable only by the app user, so read it as that user.
     as_app pm2 status
-    echo "Address : https://$(cat "$ROOT/shared/host" 2>/dev/null)"
+    echo "Address : https://$(as_app cat "$ROOT/shared/host" 2>/dev/null)"
     echo "Version : $(cut -c1-12 "$ROOT/current/.release-sha" 2>/dev/null || echo none)"
-    echo "Gateway : $([ -f "$ROOT/shared/gateway.enabled" ] && echo 'on (this server)' || echo 'off here')"
-    [ -f "$ROOT/shared/failed-sha" ] && echo "Last update FAILED for $(cut -c1-12 "$ROOT/shared/failed-sha"): see 'setu deploy-log'"
+    echo "Gateway : $(as_app test -f "$ROOT/shared/gateway.enabled" && echo 'on (this server)' || echo 'off here')"
+    if as_app test -f "$ROOT/shared/failed-sha"; then
+      echo "Last update FAILED for $(as_app cut -c1-12 "$ROOT/shared/failed-sha"): see 'setu deploy-log'"
+    fi
     ;;
   logs)
     # Ctrl+C to stop watching.
