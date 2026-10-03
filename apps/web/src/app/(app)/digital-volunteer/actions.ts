@@ -128,3 +128,12 @@ export async function dismissMessage(messageId: string): Promise<ActionState> {
   revalidatePath('/digital-volunteer/inbox');
   return { ok: true };
 }
+
+export async function confirmFollowUp(messageId: string, followUpId: string): Promise<ActionState> {
+  if (!z.uuid().safeParse(messageId).success || !z.uuid().safeParse(followUpId).success) return { error: 'Invalid follow-up.' };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('dv_confirm_followup', { p_message_id: messageId, p_follow_up_id: followUpId });
+  if (error) return { error: friendlyError(error) };
+  revalidatePath('/digital-volunteer/inbox');
+  return { ok: true };
+}

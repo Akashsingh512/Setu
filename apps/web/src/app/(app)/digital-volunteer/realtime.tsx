@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
-const TABLES = ['wa_account', 'wa_pairing', 'wa_messages', 'wa_outbox', 'wa_groups'];
+const TABLES = ['wa_account', 'wa_pairing', 'wa_messages', 'wa_outbox', 'wa_groups', 'dv_announcements'];
 
 /** Live updates for Digital Volunteer pages (status, QR code, new messages). RLS applies. */
 export function DvRealtime() {

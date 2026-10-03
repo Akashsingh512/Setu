@@ -33,6 +33,7 @@ function linkFor(n: Item): string {
   if (ids.length > 1) return '/leads';
   if (n.type === 'registration_pending') return '/volunteers';
   if (n.type === 'seva_request_pending' || n.type === 'seva_assigned') return '/digital-volunteer/seva';
+  if (n.type.startsWith('announcement_')) return '/digital-volunteer/announcements';
   if (n.type.startsWith('session_')) return '/upcoming';
   if (n.type === 'leads_need_attention') return '/leads?view=attention';
   return '/notifications';

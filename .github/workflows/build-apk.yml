@@ -1,8 +1,7 @@
 name: Build Android APK (Setu CRM)
 
 on:
-  push:
-    branches: [ main ]
+  # Manual only until the app points at the hosted web app (see docs). Re-add push when ready.
   workflow_dispatch:
 
 jobs:

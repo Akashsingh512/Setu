@@ -20,7 +20,7 @@ export default async function DigitalVolunteerOverview() {
   const since = new Date(now - 86_400_000).toISOString();
   const canMessages = access.can('view_messages');
 
-  const [{ data: acc }, groups, inbound, outbound, failed, queued, review, sevaWaiting] = await Promise.all([
+  const [{ data: acc }, groups, inbound, outbound, failed, queued, review, sevaWaiting, staleReview, annWaiting] = await Promise.all([
     supabase.from('wa_account').select('*').eq('id', true).maybeSingle<WaAccount>(),
     supabase.from('wa_groups').select('enabled, is_member'),
     canMessages ? supabase.from('wa_messages').select('id', { count: 'exact', head: true }).eq('direction', 'in').gte('received_at', since) : null,
@@ -29,6 +29,10 @@ export default async function DigitalVolunteerOverview() {
     canMessages ? supabase.from('wa_outbox').select('id', { count: 'exact', head: true }).in('status', ['queued', 'sending']) : null,
     canMessages ? supabase.from('wa_messages').select('id', { count: 'exact', head: true }).eq('status', 'needs_review') : null,
     access.can('assign_seva') ? supabase.from('dv_seva_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending') : null,
+    canMessages ? supabase.from('wa_messages').select('id', { count: 'exact', head: true }).eq('status', 'needs_review').lt('received_at', since) : null,
+    access.can('schedule_announcements')
+      ? supabase.from('dv_announcements').select('id', { count: 'exact', head: true }).eq('status', 'pending_approval')
+      : null,
   ]);
   if (!acc) return <Alert tone="warn">Digital Volunteer is not set up yet. Run the latest database migration.</Alert>;
 
@@ -46,6 +50,18 @@ export default async function DigitalVolunteerOverview() {
   ).concat(
     sevaWaiting ? [{ label: 'Seva requests waiting', value: sevaWaiting.count ?? 0, tone: (sevaWaiting.count ?? 0) > 0 ? 'warn' : undefined }] : [],
   ) as { label: string; value: number; tone?: 'danger' | 'warn' }[];
+
+  // Health checks: what must be true for Digital Volunteer to work, and what needs a person.
+  const enabledGroups = groupRows.filter((g) => g.enabled && g.is_member).length;
+  const checks: { ok: boolean; label: string; fix?: string; href?: string }[] = [
+    { ok: alive, label: 'Gateway is running', fix: 'Start apps/wa-gateway (see docs/DIGITAL_VOLUNTEER.md)' },
+    { ok: acc.status === 'connected', label: 'WhatsApp number is linked and connected', fix: 'Link it from WhatsApp account', href: '/digital-volunteer/account' },
+    { ok: acc.enabled, label: 'Digital Volunteer is switched on', fix: 'Turn it on from WhatsApp account', href: '/digital-volunteer/account' },
+    { ok: enabledGroups > 0, label: 'At least one group is enabled', fix: 'Enable groups', href: '/digital-volunteer/groups' },
+  ];
+  if (failed) checks.push({ ok: !failed.count, label: 'No messages failed to send', fix: `${failed.count} failed: check them in the inbox`, href: '/digital-volunteer/inbox' });
+  if (staleReview) checks.push({ ok: !staleReview.count, label: 'No message has waited more than a day', fix: `${staleReview.count} waiting since yesterday or earlier`, href: '/digital-volunteer/inbox' });
+  if (annWaiting) checks.push({ ok: !annWaiting.count, label: 'No announcement waiting for approval', fix: `${annWaiting.count} waiting`, href: '/digital-volunteer/announcements' });
 
   return (
     <div className="space-y-6">
@@ -125,6 +141,32 @@ export default async function DigitalVolunteerOverview() {
           ))}
         </div>
       ) : null}
+
+      <Card>
+        <CardHeader title="Checks" description={checks.every((c) => c.ok) ? 'Everything looks right.' : 'Some things need attention.'} />
+        <ul className="divide-y divide-line text-sm">
+          {checks.map((c) => (
+            <li key={c.label} className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5">
+              <span>
+                <span aria-hidden="true" className={cn('mr-2', c.ok ? 'text-ok' : 'text-danger')}>
+                  {c.ok ? '✓' : '✗'}
+                </span>
+                <span className="sr-only">{c.ok ? 'OK: ' : 'Problem: '}</span>
+                {c.label}
+              </span>
+              {!c.ok && c.fix ? (
+                c.href ? (
+                  <Link href={c.href} className="text-accent underline">
+                    {c.fix}
+                  </Link>
+                ) : (
+                  <span className="text-ink-muted">{c.fix}</span>
+                )
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </Card>
 
       {!alive ? (
         <Card className="p-5 text-sm">

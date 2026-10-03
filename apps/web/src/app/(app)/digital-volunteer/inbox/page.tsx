@@ -6,7 +6,7 @@ import { getOrgSettings } from '@/lib/auth';
 import { requireDv } from '@/lib/dv';
 import { formatDateTime, relativeTime } from '@/lib/format';
 import { createClient } from '@/lib/supabase/server';
-import { CancelOutboxButton, MarkHandledButton, ReplyBox, SuggestionCard } from './reply-box';
+import { CancelOutboxButton, ConfirmFollowUpButton, MarkHandledButton, ReplyBox, SuggestionCard } from './reply-box';
 
 export const metadata: Metadata = { title: 'Inbox' };
 
@@ -24,6 +24,7 @@ type Msg = {
   status: string;
   intent: string | null;
 };
+type FollowUpCandidate = { follow_up_id: string; lead_id: string; lead_code: string; due_at: string; note: string | null };
 type Outbox = { id: string; chat_jid: string; body: string | null; status: string; last_error: string | null; created_at: string; quoted_message_id: string | null };
 
 export default async function InboxPage({ searchParams }: { searchParams: Promise<{ chat?: string }> }) {
@@ -32,7 +33,8 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const supabase = await createClient();
   const settings = await getOrgSettings();
 
-  const [recent, groups, thread, pending] = await Promise.all([
+  const showFollowUps = !!chat && !chat.endsWith('@g.us') && access.can('update_followups');
+  const [recent, groups, thread, pending, followUps] = await Promise.all([
     supabase.from('wa_messages').select('id, chat_jid, direction, sender_name, sender_phone, body, media_type, sent_at, status').order('sent_at', { ascending: false }).limit(400),
     supabase.from('wa_groups').select('jid, name, enabled'),
     chat
@@ -41,6 +43,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
     chat
       ? supabase.from('wa_outbox').select('id, chat_jid, body, status, last_error, created_at, quoted_message_id').eq('chat_jid', chat).in('status', ['queued', 'sending', 'failed', 'pending_approval']).order('created_at')
       : Promise.resolve({ data: [] as Outbox[] }),
+    showFollowUps ? supabase.rpc('dv_followup_candidates', { p_chat_jid: chat }) : Promise.resolve({ data: [] as FollowUpCandidate[] }),
   ]);
 
   const groupName = new Map((groups.data ?? []).map((g) => [g.jid as string, g.name as string]));
@@ -62,6 +65,10 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const pendingRows = (pending.data ?? []) as Outbox[];
   const suggestions = pendingRows.filter((o) => o.status === 'pending_approval');
   const outgoing = pendingRows.filter((o) => o.status !== 'pending_approval');
+  // A follow-up is confirmed against the lead's latest message in this chat.
+  const lastLeadMessage = new Map<string, string>();
+  for (const m of messages) if (m.direction === 'in' && m.lead_id) lastLeadMessage.set(m.lead_id, m.id);
+  const openFollowUps = ((followUps.data ?? []) as FollowUpCandidate[]).filter((f) => lastLeadMessage.has(f.lead_id));
   const selectedTitle = chat ? (chats.get(chat)?.title ?? groupName.get(chat) ?? chat) : '';
 
   return (
@@ -105,6 +112,24 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
             </Link>
             <h2 className="truncate font-semibold">{selectedTitle}</h2>
           </div>
+          {openFollowUps.length ? (
+            <div className="border-b border-line bg-canvas px-5 py-3 text-sm">
+              <p className="font-medium">Open follow-ups for this lead</p>
+              <p className="text-xs text-ink-muted">If the messages show the follow-up happened, close it here. It is recorded on the lead, not counted as a call.</p>
+              <ul className="mt-2 space-y-1">
+                {openFollowUps.map((f) => (
+                  <li key={f.follow_up_id} className="flex flex-wrap items-center gap-x-2">
+                    <Link href={`/leads/${f.lead_id}`} className="text-accent hover:underline">
+                      {f.lead_code}
+                    </Link>
+                    <span className="text-ink-muted">due {formatDateTime(f.due_at, settings.default_timezone)}</span>
+                    {f.note ? <span className="text-ink-muted">· {f.note}</span> : null}
+                    <ConfirmFollowUpButton messageId={lastLeadMessage.get(f.lead_id)!} followUpId={f.follow_up_id} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <ol className="flex-1 space-y-3 overflow-y-auto px-5 py-4 text-sm">
             {messages.map((m) => {
               const lead = m.lead_id ? leadById.get(m.lead_id) : undefined;

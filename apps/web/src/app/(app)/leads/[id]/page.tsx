@@ -27,6 +27,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   archived: 'Archived',
   merged: 'Duplicate merged in',
   merged_into: 'Merged into another lead',
+  whatsapp_received: 'WhatsApp message from the lead',
 };
 
 export default async function LeadPage({
@@ -188,7 +189,13 @@ export default async function LeadPage({
                     ) : null}
                     {a.type === 'assigned' && a.data.assignee_id ? <span className="text-ink-muted"> to {name(String(a.data.assignee_id), 'a volunteer')}</span> : null}
                     {a.type === 'call_logged' ? <span className="text-ink-muted"> · {CALL_OUTCOME_LABELS[a.data.outcome as keyof typeof CALL_OUTCOME_LABELS]}</span> : null}
+                    {a.type === 'follow_up_completed' && a.data.via === 'whatsapp' ? <span className="text-ink-muted"> · confirmed from WhatsApp</span> : null}
                     <span className="text-ink-muted"> · {name(a.actor_id)}</span>
+                    {a.type === 'whatsapp_received' ? (
+                      <span className="mt-0.5 block whitespace-pre-wrap text-ink-muted">
+                        {a.data.preview ? `“${String(a.data.preview)}”` : `[${String(a.data.media_type ?? 'attachment')}]`}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="text-ink-muted" title={formatDateTime(a.created_at, settings.default_timezone)}>
                     {relativeTime(a.created_at)}

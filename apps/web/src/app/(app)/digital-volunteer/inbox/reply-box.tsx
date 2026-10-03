@@ -2,7 +2,7 @@
 import { useActionState, useState, useTransition } from 'react';
 import { FormMessage, SubmitButton } from '@/components/form';
 import { Button, Textarea } from '@/components/ui';
-import { approveSuggestion, cancelOutbox, dismissMessage, sendMessage } from '../actions';
+import { approveSuggestion, cancelOutbox, confirmFollowUp, dismissMessage, sendMessage } from '../actions';
 
 export function ReplyBox({ chat }: { chat: string }) {
   const [state, action] = useActionState(sendMessage, undefined);
@@ -94,5 +94,28 @@ export function MarkHandledButton({ messageId }: { messageId: string }) {
     <button type="button" disabled={pending} className="ml-2 text-accent underline" onClick={() => start(async () => void (await dismissMessage(messageId)))}>
       Mark as handled
     </button>
+  );
+}
+
+export function ConfirmFollowUpButton({ messageId, followUpId }: { messageId: string; followUpId: string }) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        disabled={pending}
+        className="text-accent underline"
+        onClick={() =>
+          start(async () => {
+            const r = await confirmFollowUp(messageId, followUpId);
+            setError(r.error ?? null);
+          })
+        }
+      >
+        Mark done
+      </button>
+      {error ? <span className="text-danger">{error}</span> : null}
+    </>
   );
 }

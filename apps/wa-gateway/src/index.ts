@@ -366,6 +366,13 @@ async function onMessage(s: WASocket, m: WAMessage) {
 type OutboxRow = { id: string; chat_jid: string; body: string | null; media_path: string | null };
 let sending = false;
 
+/** Announcement posters live in the private "dv-posters" bucket (service role reads them). */
+async function downloadPoster(path: string): Promise<Buffer> {
+  const { data, error } = await db.storage.from('dv-posters').download(path);
+  if (error || !data) throw new Error(`Poster could not be loaded: ${error?.message ?? 'not found'}`);
+  return Buffer.from(await data.arrayBuffer());
+}
+
 async function drainOutbox() {
   if (sending || !sock || !connected || !account.enabled) return;
   sending = true;
@@ -374,8 +381,9 @@ async function drainOutbox() {
     if (error) throw new Error(error.message);
     for (const row of (data ?? []) as OutboxRow[]) {
       try {
-        if (row.media_path) throw new Error('Sending images is not available yet');
-        const sent = await sock.sendMessage(row.chat_jid, { text: row.body ?? '' });
+        const sent = row.media_path
+          ? await sock.sendMessage(row.chat_jid, { image: await downloadPoster(row.media_path), caption: row.body ?? undefined })
+          : await sock.sendMessage(row.chat_jid, { text: row.body ?? '' });
         const id = sent?.key.id ?? null;
         if (id && sent?.message) {
           sentCache.set(id, sent.message);
@@ -385,7 +393,7 @@ async function drainOutbox() {
         if (id) {
           await db.rpc('dv_ingest_message', {
             p_chat_jid: row.chat_jid, p_provider_message_id: id, p_direction: 'out', p_sender_jid: null,
-            p_sender_phone: null, p_sender_name: null, p_body: row.body, p_media_type: null,
+            p_sender_phone: null, p_sender_name: null, p_body: row.body, p_media_type: row.media_path ? 'image' : null,
             p_sent_at: new Date().toISOString(), p_outbox_id: row.id,
           });
         }

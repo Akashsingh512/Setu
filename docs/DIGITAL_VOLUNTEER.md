@@ -123,6 +123,50 @@ Add to `apps/wa-gateway/.env` (or the host's secrets): `AWS_REGION` (e.g. `ap-so
 or inference-profile id your AWS account has access to, e.g. a Claude Haiku profile), `AWS_ACCESS_KEY_ID`,
 `AWS_SECRET_ACCESS_KEY`. Restart the gateway. Cost: a few tokens per unclear message only.
 
+## Lead replies (timeline)
+
+Tick *WhatsApp account → Log replies from leads on the lead's timeline*. A private message from a number that matches
+**exactly one** live lead is then written to that lead's timeline (with the first 280 characters), and the volunteer holding
+the lead gets a notification ("A lead messaged on WhatsApp", no name or number, at most once per lead per 30 minutes).
+
+- It is **never counted as a call**: no call attempt, no first contact, the 24-hour deadline is unchanged.
+- Group messages are never linked to leads.
+- People with *Update follow-ups* see the lead's open follow-ups at the top of the chat in the inbox and can **Mark done**
+  when the messages show the follow-up happened. The timeline records "Follow-up done · confirmed from WhatsApp".
+
+## Announcements
+
+*Digital Volunteer → Announcements* (permission *Announcements*):
+
+1. Write the message, optionally add a poster (JPG/PNG/WebP, up to 5 MB), choose groups and a time (up to 90 days ahead).
+   Only groups with *Scheduled announcements* ticked can be chosen; a poster also needs *Posters and links*.
+2. **A second person** with the same permission approves it (a super admin may approve their own). They are notified.
+3. At the chosen time the gateway posts it to each group, paced like every other message.
+
+Safety: the group's settings are checked again at approval and right before sending (switching a group off stops it);
+an announcement **more than 6 hours late** (gateway or Digital Volunteer was off) is not sent; *Cancel* stops every group
+not yet sent. Posters are stored in the private `dv-posters` storage bucket created by the migration.
+
+## Reports and checks
+
+- **Overview → Checks**: gateway running, number connected, switched on, groups enabled, no failed messages, nothing
+  waiting more than a day, no announcement waiting for approval. Each failing check links to where to fix it.
+- **Reports** (permission *Reports & audit*): messages per day, what people asked, how replies went out (automatic /
+  approved / written by people), seva outcomes, busiest groups, and the Digital Volunteer audit log. Counts only: no
+  message text or phone numbers, so this permission doesn't let someone read chats.
+
+## Deployment checklist
+
+1. Apply all migrations in `supabase/migrations` to the Supabase project (in order).
+2. Web app: deploy `apps/web` (e.g. AWS Amplify with `amplify.yml`, or Vercel) with `NEXT_PUBLIC_SUPABASE_URL`,
+   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. Add its URL in Supabase → Authentication → URL Configuration.
+3. Gateway: run **one** always-on `apps/wa-gateway` (Render worker, or an AWS Lightsail/EC2 instance with
+   `npm ci && npm start -w @crm/wa-gateway` under a process manager such as `pm2` or systemd), with `SUPABASE_URL` and
+   `SUPABASE_SERVICE_ROLE_KEY` (plus the optional Bedrock variables).
+4. In Setu: grant operators, link the number, turn Digital Volunteer on, enable groups. Then open **Overview → Checks**:
+   every line should be ✓.
+5. Send a test message from another phone to an enabled group and check it appears in the Inbox.
+
 ## What is built
 
 | Phase | Status |
@@ -130,6 +174,6 @@ or inference-profile id your AWS account has access to, e.g. a Claude Haiku prof
 | 2: Link by QR, status, safety switches, operators, groups and permissions, inbox, manual replies | ✅ built |
 | 3: Course answers from Courses / Upcoming Programs (keywords + optional Amazon Bedrock), manual/assisted/automatic modes, editable templates, suggestions in the inbox | ✅ built |
 | 4: Seva requests → lead assignment within limits, numbers sent privately, approval, undo | ✅ built |
-| 5: Lead replies logged on the lead timeline (never counted as calls) | next |
-| 6: Scheduled announcements with posters | planned |
-| 7: Dashboard, reports, deployment checks | planned |
+| 5: Lead replies logged on the lead timeline (never counted as calls), follow-ups confirmed from the inbox | ✅ built |
+| 6: Scheduled announcements with posters, second-person approval | ✅ built |
+| 7: Health checks, reports, audit log, deployment checklist | ✅ built |

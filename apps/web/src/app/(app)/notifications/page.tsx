@@ -24,6 +24,7 @@ function linkFor(n: Notification): string | null {
   if (typeof d.session_id === 'string') return '/upcoming';
   if (n.type === 'registration_pending') return '/volunteers';
   if (n.type === 'seva_request_pending' || n.type === 'seva_assigned') return '/digital-volunteer/seva';
+  if (typeof d.announcement_id === 'string') return '/digital-volunteer/announcements';
   if (n.type === 'leads_need_attention') return '/leads?view=attention';
   if (n.type === 'leads_auto_reassigned') return '/dashboard';
   if (n.type === 'volunteer_deactivated_with_leads' && typeof d.profile_id === 'string') return `/leads?assignee=${d.profile_id}`;
