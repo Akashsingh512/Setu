@@ -474,7 +474,9 @@ async function runCommands() {
 // ---------------------------------------------------------------------------
 async function heartbeat() {
   await refreshConfig();
-  await setStatus({ gateway_seen_at: new Date().toISOString() });
+  // While connected, re-state it: a gateway that was replaced (e.g. an old copy on
+  // another machine) may have written a stale status after this one took over.
+  await setStatus({ gateway_seen_at: new Date().toISOString(), ...(connected ? { status: 'connected' } : {}) });
 }
 
 async function main() {
