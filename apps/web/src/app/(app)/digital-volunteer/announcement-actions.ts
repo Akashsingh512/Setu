@@ -14,15 +14,23 @@ const uuid = z.uuid();
 const createSchema = z.object({
   title: z.string().trim().min(1, 'Give it a name.').max(120),
   body: z.string().max(4000, 'Message is too long (4000 characters max).'),
-  posterPath: z.string().regex(/^announcements\/[A-Za-z0-9._/-]+$/).nullable(),
+  posterPath: z
+    .string()
+    .regex(/^announcements\/[A-Za-z0-9._/-]+$/)
+    .nullable(),
   sendAt: z.string().min(1, 'Choose when to send it.'),
   groupIds: z.array(uuid).min(1, 'Choose at least one group.'),
+  repeatCount: z.number().int().min(1).max(30, 'Up to 30 times.'),
+  repeatEveryDays: z.number().int().min(1).max(30),
 });
 
 export async function createAnnouncement(input: z.input<typeof createSchema>): Promise<ActionState> {
   const parsed = createSchema.safeParse(input);
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Some details are not valid.' };
-  const { title, body, posterPath, sendAt, groupIds } = parsed.data;
+  if (!parsed.success)
+    return {
+      error: parsed.error.issues[0]?.message ?? 'Some details are not valid.',
+    };
+  const { title, body, posterPath, sendAt, groupIds, repeatCount, repeatEveryDays } = parsed.data;
   if (!body.trim() && !posterPath) return { error: 'Write a message or add a poster.' };
   const settings = await getOrgSettings();
   const iso = localInputToIso(sendAt, settings.default_timezone);
@@ -34,10 +42,15 @@ export async function createAnnouncement(input: z.input<typeof createSchema>): P
     p_poster_path: posterPath,
     p_send_at: iso,
     p_group_ids: groupIds,
+    p_repeat_count: repeatCount,
+    p_repeat_every_days: repeatEveryDays,
   });
   if (error) return { error: friendlyError(error) };
   revalidatePath('/digital-volunteer/announcements');
-  return { ok: true, message: 'Created. Someone else with the Announcements permission must approve it before it is sent.' };
+  return {
+    ok: true,
+    message: 'Created. Someone else with the Announcements permission must approve it before it is sent.',
+  };
 }
 
 export async function approveAnnouncement(id: string): Promise<ActionState> {
@@ -46,13 +59,19 @@ export async function approveAnnouncement(id: string): Promise<ActionState> {
   const { error } = await supabase.rpc('dv_approve_announcement', { p_id: id });
   if (error) return { error: friendlyError(error) };
   revalidatePath('/digital-volunteer/announcements');
-  return { ok: true, message: 'Approved. It will be sent at the scheduled time.' };
+  return {
+    ok: true,
+    message: 'Approved. It will be sent at the scheduled time.',
+  };
 }
 
 export async function rejectAnnouncement(id: string, reason: string): Promise<ActionState> {
   if (!uuid.safeParse(id).success) return { error: 'Invalid announcement.' };
   const supabase = await createClient();
-  const { error } = await supabase.rpc('dv_reject_announcement', { p_id: id, p_reason: reason.trim().slice(0, 300) || null });
+  const { error } = await supabase.rpc('dv_reject_announcement', {
+    p_id: id,
+    p_reason: reason.trim().slice(0, 300) || null,
+  });
   if (error) return { error: friendlyError(error) };
   revalidatePath('/digital-volunteer/announcements');
   return { ok: true, message: 'Not approved.' };
@@ -61,8 +80,13 @@ export async function rejectAnnouncement(id: string, reason: string): Promise<Ac
 export async function cancelAnnouncement(id: string): Promise<ActionState> {
   if (!uuid.safeParse(id).success) return { error: 'Invalid announcement.' };
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc('dv_cancel_announcement', { p_id: id });
+  const { data, error } = await supabase.rpc('dv_cancel_announcement', {
+    p_id: id,
+  });
   if (error) return { error: friendlyError(error) };
   revalidatePath('/digital-volunteer/announcements');
-  return { ok: true, message: data ? `Cancelled. ${data} group message(s) stopped.` : 'Cancelled.' };
+  return {
+    ok: true,
+    message: data ? `Cancelled. ${data} group message(s) stopped.` : 'Cancelled.',
+  };
 }

@@ -19,9 +19,22 @@ type Announcement = {
   created_by: string;
   decided_by: string | null;
   reason: string | null;
+  repeat_count: number;
+  repeat_every_days: number;
 };
-type Target = { announcement_id: string; group_id: string; outbox_id: string | null };
-type OutboxRow = { id: string; status: string; last_error: string | null };
+type Target = { announcement_id: string; group_id: string };
+type OutboxRow = {
+  announcement_id: string;
+  chat_jid: string;
+  status: string;
+  last_error: string | null;
+  send_after: string;
+};
+
+const repeatLabel = (a: Announcement) =>
+  a.repeat_count <= 1
+    ? null
+    : `${a.repeat_every_days === 1 ? 'Every day' : a.repeat_every_days === 7 ? 'Every week' : `Every ${a.repeat_every_days} days`} · ${a.repeat_count} times`;
 
 const STATUS: Record<Announcement['status'], { label: string; tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'info' }> = {
   pending_approval: { label: 'Waiting for approval', tone: 'warn' },
@@ -40,18 +53,25 @@ export default async function AnnouncementsPage() {
 
   const [{ data: rows }, { data: targets }, { data: groups }] = await Promise.all([
     supabase.from('dv_announcements').select('*').order('send_at', { ascending: false }).limit(50),
-    supabase.from('dv_announcement_groups').select('announcement_id, group_id, outbox_id'),
-    supabase.from('wa_groups').select('id, name, enabled, is_member, allow_announcements, allow_media').order('name'),
+    supabase.from('dv_announcement_groups').select('announcement_id, group_id'),
+    supabase.from('wa_groups').select('id, jid, name, enabled, is_member, allow_announcements, allow_media').order('name'),
   ]);
   const list = (rows ?? []) as Announcement[];
+  const groupJid = new Map((groups ?? []).map((g) => [g.id as string, g.jid as string]));
   const groupName = new Map((groups ?? []).map((g) => [g.id as string, (g.name as string) || 'Unnamed group']));
   const options: GroupOption[] = (groups ?? [])
     .filter((g) => g.enabled && g.is_member && g.allow_announcements)
-    .map((g) => ({ id: g.id as string, name: (g.name as string) || 'Unnamed group', media: !!g.allow_media }));
+    .map((g) => ({
+      id: g.id as string,
+      name: (g.name as string) || 'Unnamed group',
+      media: !!g.allow_media,
+    }));
 
-  const outboxIds = ((targets ?? []) as Target[]).map((t) => t.outbox_id).filter(Boolean) as string[];
+  const listIds = list.map((a) => a.id);
   const [{ data: outbox }, posters] = await Promise.all([
-    outboxIds.length ? supabase.from('wa_outbox').select('id, status, last_error').in('id', outboxIds) : Promise.resolve({ data: [] as OutboxRow[] }),
+    listIds.length
+      ? supabase.from('wa_outbox').select('announcement_id, chat_jid, status, last_error, send_after').in('announcement_id', listIds).order('send_after')
+      : Promise.resolve({ data: [] as OutboxRow[] }),
     (async () => {
       const paths = list.map((a) => a.poster_path).filter(Boolean) as string[];
       if (!paths.length) return new Map<string, string>();
@@ -59,7 +79,7 @@ export default async function AnnouncementsPage() {
       return new Map((data ?? []).filter((d) => d.signedUrl).map((d) => [d.path as string, d.signedUrl]));
     })(),
   ]);
-  const outboxById = new Map(((outbox ?? []) as OutboxRow[]).map((o) => [o.id, o]));
+  const sendsOf = (id: string) => ((outbox ?? []) as OutboxRow[]).filter((o) => o.announcement_id === id);
   const targetsOf = (id: string) => ((targets ?? []) as Target[]).filter((t) => t.announcement_id === id);
   // eslint-disable-next-line react-hooks/purity -- server component: rendered once per request
   const defaultSendAt = toLocalInputValue(new Date(Date.now() + 3_600_000), settings.default_timezone);
@@ -80,18 +100,34 @@ export default async function AnnouncementsPage() {
             const poster = a.poster_path ? posters.get(a.poster_path) : undefined;
             const mine = a.created_by === profile.id;
             const open = a.status === 'pending_approval' || a.status === 'scheduled' || a.status === 'sending';
+            const sends = sendsOf(a.id);
+            const next = sends.find((o) => o.status === 'queued');
+            const repeat = repeatLabel(a);
             return (
               <Card key={a.id} className="p-5 text-sm">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <p className="font-medium">{a.title}</p>
                     <p className="text-xs text-ink-muted">
+                      {repeat ? 'From ' : ''}
                       {formatDateTime(a.send_at, settings.default_timezone)} ({relativeTime(a.send_at)}) · by {names.get(a.created_by) ?? 'someone'}
                       {a.decided_by && a.status !== 'pending_approval' ? ` · decided by ${names.get(a.decided_by) ?? 'someone'}` : ''}
                     </p>
                   </div>
                   <Badge tone={s.tone}>{s.label}</Badge>
                 </div>
+                {repeat ? (
+                  <p className="mt-1 text-xs">
+                    <span className="font-medium">↻ {repeat}</span>
+                    {sends.length ? (
+                      <span className="text-ink-muted">
+                        {' '}
+                        · {Math.round(sends.filter((o) => o.status === 'sent').length / Math.max(1, targetsOf(a.id).length))} of {a.repeat_count} done
+                        {next && open ? ` · next ${formatDateTime(next.send_after, settings.default_timezone)}` : ''}
+                      </span>
+                    ) : null}
+                  </p>
+                ) : null}
                 <div className="mt-3 flex flex-wrap gap-3">
                   {poster ? (
                     // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL from private storage
@@ -103,12 +139,19 @@ export default async function AnnouncementsPage() {
                 </div>
                 <ul className="mt-3 flex flex-wrap gap-1.5">
                   {targetsOf(a.id).map((t) => {
-                    const o = t.outbox_id ? outboxById.get(t.outbox_id) : undefined;
+                    const rows = sends.filter((o) => o.chat_jid === groupJid.get(t.group_id));
+                    const sent = rows.filter((o) => o.status === 'sent').length;
+                    const failed = rows.find((o) => o.status === 'failed');
+                    const state = !rows.length
+                      ? ''
+                      : rows.length > 1
+                        ? ` · ${sent}/${rows.length} sent`
+                        : ` · ${rows[0]!.status === 'queued' ? 'waiting' : rows[0]!.status}`;
                     return (
-                      <li key={t.group_id} title={o?.last_error ?? undefined}>
-                        <Badge tone={o?.status === 'sent' ? 'ok' : o?.status === 'failed' ? 'danger' : 'neutral'}>
+                      <li key={t.group_id} title={failed?.last_error ?? undefined}>
+                        <Badge tone={failed ? 'danger' : rows.length && sent === rows.length ? 'ok' : 'neutral'}>
                           {groupName.get(t.group_id) ?? 'Group'}
-                          {o ? ` · ${o.status === 'queued' ? 'waiting' : o.status}` : ''}
+                          {state}
                         </Badge>
                       </li>
                     );

@@ -139,3 +139,57 @@ describe('approval and sending', () => {
     expect(await q(f.db, f.teacherB, `select * from public.dv_announcements`)).toHaveLength(1);
   });
 });
+
+describe('repeating announcements', () => {
+  const createRepeating = (times: number, every: number, at = '1 hour') =>
+    q<{ id: string }>(
+      f.db,
+      f.teacherA,
+      `select public.dv_create_announcement('Daily reminder', 'Join the morning meditation', null, now() + $1::interval, $2, $3, $4) as id`,
+      [at, [g1], times, every],
+    ).then((r) => r[0]!.id);
+  const sends = (id: string) =>
+    sq<{ days: number; status: string }>(
+      f.db,
+      `select round(extract(epoch from send_after - min(send_after) over ()) / 86400)::int as days, status
+         from public.wa_outbox where announcement_id = $1 order by send_after`,
+      [id],
+    );
+
+  it('one approval queues every send, N days apart', async () => {
+    const id = await createRepeating(3, 2);
+    await q(f.db, f.teacherB, `select public.dv_approve_announcement($1)`, [id]);
+    expect(await sends(id)).toEqual([
+      { days: 0, status: 'queued' },
+      { days: 2, status: 'queued' },
+      { days: 4, status: 'queued' },
+    ]);
+  });
+
+  it('stays scheduled between sends, and is sent after the last one', async () => {
+    const id = await createRepeating(2, 1);
+    await q(f.db, f.teacherB, `select public.dv_approve_announcement($1)`, [id]);
+    // First send due now.
+    await sq(f.db, `update public.wa_outbox set send_after = now() - interval '1 minute' where announcement_id = $1 and idempotency_key like '%:0'`, [id]);
+    const [first] = await claim();
+    expect(await status(id)).toBe('sending');
+    await complete(first!.id);
+    expect(await status(id)).toBe('scheduled');
+    await due(id);
+    const [second] = await claim();
+    await complete(second!.id);
+    expect(await status(id)).toBe('sent');
+  });
+
+  it('cancel stops the remaining sends', async () => {
+    const id = await createRepeating(5, 1);
+    await q(f.db, f.teacherB, `select public.dv_approve_announcement($1)`, [id]);
+    expect((await q<{ n: number }>(f.db, f.teacherA, `select public.dv_cancel_announcement($1) as n`, [id]))[0]!.n).toBe(5);
+  });
+
+  it('limits: up to 30 times, last send within 90 days', async () => {
+    await expect(createRepeating(31, 1)).rejects.toThrow(/up to 30 times/);
+    await expect(createRepeating(20, 7)).rejects.toThrow(/within 90 days/);
+    expect(await createRepeating(30, 3)).toBeTruthy();
+  });
+});
