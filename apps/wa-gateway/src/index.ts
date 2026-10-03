@@ -48,6 +48,10 @@ let connected = false;
 let qrCount = 0;
 let stopReason: 'qr_expired' | 'logout' | 'shutdown' | null = null;
 let reconnectDelay = 2_000;
+// Code 440 "replaced": another gateway is using this WhatsApp session. Back off hard
+// instead of fighting it (which also corrupts message decryption keys).
+let conflicts = 0;
+let stableTimer: ReturnType<typeof setTimeout> | undefined;
 let account: Account = { enabled: false, auto_paused: false, status: 'not_linked' };
 let groups = new Map<string, GroupRow>();
 const sentCache = new Map<string, proto.IMessage>(); // lets WhatsApp re-request a message we sent
@@ -137,6 +141,8 @@ async function onConnectionUpdate(s: WASocket, update: Partial<ConnectionState>)
   if (update.connection === 'open') {
     connected = true;
     reconnectDelay = 2_000;
+    clearTimeout(stableTimer);
+    stableTimer = setTimeout(() => (conflicts = 0), 60_000); // a minute without conflict: all clear
     const me = s.user;
     await setQr(null);
     await setStatus({
@@ -170,6 +176,19 @@ async function onConnectionUpdate(s: WASocket, update: Partial<ConnectionState>)
       return;
     }
     if (stopReason === 'shutdown') return;
+    if (code === DisconnectReason.connectionReplaced) {
+      clearTimeout(stableTimer);
+      conflicts += 1;
+      const waitMs = Math.min(30_000 * conflicts, 5 * 60_000);
+      await setStatus({ status: 'disconnected' });
+      await reportError(
+        `Another copy of the gateway (or WhatsApp Web with the same session) took over this connection. ` +
+          `Only one gateway may run: stop the other one. Retrying in ${Math.round(waitMs / 1000)} s.`,
+      );
+      reconnectDelay = waitMs;
+      scheduleReconnect();
+      return;
+    }
     if (code === DisconnectReason.restartRequired) {
       // Normal right after a successful scan: reconnect straight away.
       reconnectDelay = 0;
