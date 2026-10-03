@@ -158,11 +158,9 @@ not yet sent. Posters are stored in the private `dv-posters` storage bucket crea
 ## Deployment checklist
 
 1. Apply all migrations in `supabase/migrations` to the Supabase project (in order).
-2. Web app: deploy `apps/web` (e.g. AWS Amplify with `amplify.yml`, or Vercel) with `NEXT_PUBLIC_SUPABASE_URL`,
-   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. Add its URL in Supabase → Authentication → URL Configuration.
-3. Gateway: run **one** always-on `apps/wa-gateway` (Render worker, or an AWS Lightsail/EC2 instance with
-   `npm ci && npm start -w @crm/wa-gateway` under a process manager such as `pm2` or systemd), with `SUPABASE_URL` and
-   `SUPABASE_SERVICE_ROLE_KEY` (plus the optional Bedrock variables).
+2. Web app and gateway: one AWS Lightsail server runs both, with HTTPS and automatic updates from GitHub. Follow
+   [DEPLOY_LIGHTSAIL.md](DEPLOY_LIGHTSAIL.md). Add the server's address in Supabase → Authentication → URL Configuration.
+3. Run **one** gateway only: stop the one on your PC before starting it on the server (`setu gateway-on`).
 4. In Setu: grant operators, link the number, turn Digital Volunteer on, enable groups. Then open **Overview → Checks**:
    every line should be ✓.
 5. Send a test message from another phone to an enabled group and check it appears in the Inbox.
