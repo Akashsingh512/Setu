@@ -2,7 +2,7 @@
 // build a reply from verified CRM data, and hand both to the database, which
 // decides whether the reply is sent, suggested, or not used (dv_record_intent).
 //
-// Order: an approver's SEND/EDIT/SKIP or YES/NO -> reply rules -> built-in keyword
+// Order: an approver's SEND/EDIT/SKIP or YES/NO -> a volunteer's comment on their lead -> reply rules -> built-in keyword
 // detection -> AI classification for anything still unclear -> AI draft when a
 // real question has no answer in Setu (a draft is never sent without a person).
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -139,6 +139,17 @@ export async function processMessage(
     if (error) log.warn({ err: error.message, id: msg.id }, 'approval reply failed');
     else if ((data as { handled?: boolean } | null)?.handled) {
       log.info({ id: msg.id, action: decision.action, ref: decision.ref }, 'seva decision from WhatsApp');
+      return;
+    }
+  }
+
+  // A volunteer writing privately about one of their own leads ("L-000002 called...",
+  // or the lead's name): saved as a note on that lead. The database checks it all.
+  if (!msg.groupId && text) {
+    const { data: note, error } = await db.rpc('dv_volunteer_lead_note', { p_message_id: msg.id });
+    if (error) log.warn({ err: error.message, id: msg.id }, 'lead note check failed');
+    else if ((note as { handled?: boolean } | null)?.handled) {
+      log.info({ id: msg.id, lead: (note as { lead_id?: string }).lead_id }, 'volunteer comment on a lead');
       return;
     }
   }

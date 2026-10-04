@@ -41,6 +41,9 @@ const PERIODS = {
 const INTENTS: Record<string, string> = {
   course_info: 'Course questions',
   seva_request: 'Seva requests',
+  lead_note: 'Comments on leads',
+  approval_reply: 'Approvals by reply',
+  handover: 'Handed to a person',
   none: 'Other messages',
   'not analysed': 'Not analysed',
 };
