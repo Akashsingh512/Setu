@@ -108,7 +108,10 @@ export function TemplateEditor({
             <div className="space-y-1 pb-2">
               <p className="text-sm font-medium">Poster (optional)</p>
               <p className="text-xs text-ink-muted">
-                {kind === 'course_details' ? 'Used when the program has no poster of its own. ' : ''}JPG, PNG or WebP, up to 5 MB.
+                {kind === 'course_details'
+                  ? 'Used when the program has no poster of its own, and for the other replies when they have none. '
+                  : 'Without one, the One program poster is used. '}
+                JPG, PNG or WebP, up to 5 MB.
               </p>
               <PosterInput
                 folder="templates"

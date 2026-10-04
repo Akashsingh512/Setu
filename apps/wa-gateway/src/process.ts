@@ -66,10 +66,14 @@ async function loadData(db: SupabaseClient): Promise<Data> {
   return cache;
 }
 
-/** The poster for a course answer: the program's own, else the course response's. */
+/**
+ * The poster for a course answer: the program's own, else that course response's,
+ * else the "One program" poster (the general one). A hand-over never has one.
+ */
 function posterFor(data: Data, answer: CourseAnswer): string | null {
+  if (answer.kind === 'fallback') return null;
   const own = answer.sessionId ? data.sessions.find((s) => s.id === answer.sessionId)?.poster_path : null;
-  return own || data.templatePosters[answer.kind] || null;
+  return own || data.templatePosters[answer.kind] || data.templatePosters.course_details || null;
 }
 
 const looksLikeQuestion = (t: string) => t.includes('?') || t.trim().split(/\s+/).length >= 4;
