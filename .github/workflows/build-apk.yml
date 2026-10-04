@@ -22,6 +22,8 @@ jobs:
   build-apk:
     name: Build Setu Android APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     env:
       # Single source of truth for the hosted URL.
