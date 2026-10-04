@@ -1,5 +1,14 @@
 name: Build Android APK (Setu CRM)
 
+# Builds the Setu Android app (a Capacitor shell that loads the live web app) and
+# publishes it as a GitHub Release, tag v1.0.<run number>. Installed apps check the
+# latest Release and offer the update (apps/mobile/android/.../UpdateChecker.java).
+#
+# Every published APK is signed with the SAME key (repo secrets, see
+# docs/ANDROID_APK.md): Android only installs an update over the old app when the
+# keys match. Without the secrets, a debug APK is built for testing but nothing is
+# published.
+
 on:
   workflow_dispatch:
     inputs:
@@ -7,6 +16,11 @@ on:
         description: "Live app URL the WebView will load"
         required: false
         default: "https://3-108-61-69.sslip.io"
+      required_update:
+        description: "Make this update required (installed apps can't postpone it)"
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main]
     paths:
@@ -26,65 +40,50 @@ jobs:
       contents: write
 
     env:
-      # Single source of truth for the hosted URL.
-      # Overridable via workflow_dispatch input.
+      # Single source of truth for the hosted URL; overridable via the manual input.
       SETU_SERVER_URL: ${{ inputs.server_url || 'https://3-108-61-69.sslip.io' }}
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: 1.0.${{ github.run_number }}
 
     steps:
-      # ── Checkout ────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── Toolchain ──────────────────────────────────────────
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: "npm"
 
-      # Capacitor 7 + AGP 8.7 require JDK 21
+      # Capacitor 7 + AGP 8.7 require JDK 21. ubuntu-latest already ships the Android SDK.
       - name: Setup Java JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "21"
 
-      # ubuntu-latest already ships ANDROID_HOME – no extra SDK setup needed.
-
-      # ── Dependencies ───────────────────────────────────────
       - name: Install npm dependencies (mobile workspace only)
         run: npm ci --workspace @crm/mobile --include-workspace-root --ignore-scripts
 
-      # ── Capacitor ──────────────────────────────────────────
-      - name: Add Capacitor Android platform
-        working-directory: apps/mobile
-        run: npx cap add android
-
+      # The Android project is committed (it holds native code); sync writes the
+      # config (server URL) and plugins into it.
       - name: Sync Capacitor
         working-directory: apps/mobile
         run: npx cap sync android
 
-      # ── Version codes ──────────────────────────────────────
-      - name: Patch versionCode & versionName
+      - name: Set versionCode & versionName
         run: |
           BUILD_GRADLE="apps/mobile/android/app/build.gradle"
-          sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/" "$BUILD_GRADLE"
-          sed -i "s/versionName \"1.0\"/versionName \"1.0.${{ github.run_number }}\"/" "$BUILD_GRADLE"
-          echo "versionCode=${{ github.run_number }}, versionName=1.0.${{ github.run_number }}"
+          sed -i "s/versionCode 1$/versionCode ${VERSION_CODE}/" "$BUILD_GRADLE"
+          sed -i "s/versionName \"1.0\"$/versionName \"${VERSION_NAME}\"/" "$BUILD_GRADLE"
+          grep -E "versionCode|versionName" "$BUILD_GRADLE"
+          grep -q "versionCode ${VERSION_CODE}" "$BUILD_GRADLE" || { echo "::error::versionCode was not set"; exit 1; }
 
-      # ── Launcher icons ─────────────────────────────────────
       - name: Install ImageMagick
         run: sudo apt-get update && sudo apt-get install -y imagemagick
 
       - name: Generate Android launcher icons
         run: bash apps/mobile/scripts/generate-icons.sh
-
-      # ── Build debug APK ────────────────────────────────────
-      - name: Build debug APK
-        working-directory: apps/mobile/android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
 
       - name: Check signing secrets
         id: signing
@@ -95,6 +94,7 @@ jobs:
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No signing secrets: building a debug APK for testing only. Nothing will be published (see docs/ANDROID_APK.md)."
           fi
 
       - name: Build signed release APK
@@ -105,60 +105,53 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          # Decode keystore
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > apps/mobile/android/app/release.keystore
-
-          # Build release APK
+          KEYSTORE="$RUNNER_TEMP/release.keystore"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE"
           cd apps/mobile/android
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon \
-            -Pandroid.injected.signing.store.file="$(pwd)/app/release.keystore" \
+            -Pandroid.injected.signing.store.file="$KEYSTORE" \
             -Pandroid.injected.signing.store.password="$ANDROID_KEYSTORE_PASSWORD" \
             -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
             -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
+          rm -f "$KEYSTORE"
 
-          # Clean up keystore
-          rm -f app/release.keystore
+      - name: Build debug APK (testing only)
+        if: steps.signing.outputs.available != 'true'
+        working-directory: apps/mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
-      # ── Prepare artifacts ──────────────────────────────────
-      - name: Rename & collect APKs
+      - name: Collect APK
         run: |
           mkdir -p build-output
-          cp apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk \
-             "build-output/Setu-1.0.${{ github.run_number }}.apk"
-
-          # If signed release APK was built, include it too
-          RELEASE_APK="apps/mobile/android/app/build/outputs/apk/release/app-release.apk"
-          if [ -f "$RELEASE_APK" ]; then
-            cp "$RELEASE_APK" "build-output/Setu-1.0.${{ github.run_number }}-release.apk"
+          if [ "${{ steps.signing.outputs.available }}" = "true" ]; then
+            cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "build-output/Setu-${VERSION_NAME}.apk"
+          else
+            cp apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk "build-output/Setu-${VERSION_NAME}-debug.apk"
           fi
-
           ls -lh build-output/
 
-      # ── Upload workflow artifact ───────────────────────────
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: Setu-Android-APK-${{ github.run_number }}
           path: build-output/Setu-*.apk
 
-      # ── GitHub Release ─────────────────────────────────────
+      # Only signed builds are published: installed apps update to the latest Release.
       - name: Create GitHub Release
+        if: steps.signing.outputs.available == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: "Setu CRM v1.0.${{ github.run_number }}"
+          tag_name: v${{ env.VERSION_NAME }}
+          name: "Setu v${{ env.VERSION_NAME }}"
           body: |
-            ## Setu CRM – Android APK v1.0.${{ github.run_number }}
+            ${{ inputs.required_update && 'required: true' || '' }}
+            Setu for Android, version ${{ env.VERSION_NAME }}.
 
-            **Server URL:** `${{ env.SETU_SERVER_URL }}`
-
-            ### Install
-            1. Download `Setu-1.0.${{ github.run_number }}.apk` below.
-            2. On your Android phone, enable *Settings → Install unknown apps* for your browser.
-            3. Open the downloaded file and tap **Install**.
-
-            > This is a debug build. For a signed release build, configure the signing secrets (see docs/ANDROID_APK.md).
+            New install: download Setu-${{ env.VERSION_NAME }}.apk below, open it, and allow installing from your browser if asked.
+            Already installed: open Setu and tap Update when it asks.
           files: build-output/Setu-*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

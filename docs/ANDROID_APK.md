@@ -72,40 +72,42 @@ When the app moves from Lightsail to Render (or anywhere else):
 
 ---
 
-## Release signing (optional)
+## Release signing (required for updates)
 
-Debug APKs are installable via side-loading, but Google Play requires a signed release
-build. The workflow supports this via optional repository secrets.
+Android installs an update over an existing app **only if both are signed with the same key**.
+So every published APK is signed with one release key, kept as repository secrets:
 
-### Create a keystore
+- **With the secrets** the workflow builds a signed release APK and publishes it as a GitHub
+  Release (`Setu-1.0.<N>.apk`). Installed apps offer it as an update.
+- **Without them** it builds a debug APK as a workflow artifact for testing (`-debug.apk`) and
+  publishes nothing. Debug builds can never update, or be updated by, a release build.
+
+> ⚠️ **Back up the key.** If the keystore or its password is lost, no future version can be
+> installed over the apps people already have: everyone would have to uninstall and reinstall.
+> Keep a copy somewhere safe (e.g. a password manager or an encrypted drive), never in the repo.
+
+### The key
+
+The Setu release key was created once on the maintainer's PC, in
+`C:\Users\Lenovo\setu-android-signing\` (`setu-release.p12`, alias `setu`, valid until 2056).
+To create a new one elsewhere (only for a brand-new app; it can't update apps signed with the old key):
 
 ```bash
-keytool -genkeypair \
-  -v \
-  -keystore setu-release.keystore \
-  -alias setu \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 10000 \
-  -storepass YOUR_STORE_PASSWORD \
-  -keypass YOUR_KEY_PASSWORD \
-  -dname "CN=Setu CRM, OU=Art of Living, O=Art of Living Foundation, L=Bangalore, S=Karnataka, C=IN"
+export MSYS_NO_PATHCONV=1   # Git Bash on Windows only
+openssl req -x509 -newkey rsa:2048 -sha256 -days 10950 -nodes -keyout key.pem -out cert.pem -subj "/CN=Setu/O=Art of Living Setu/C=IN"
+openssl pkcs12 -export -inkey key.pem -in cert.pem -name setu -out setu-release.p12 -passout "pass:YOUR_PASSWORD"
+rm key.pem
+base64 -w0 setu-release.p12 > keystore-base64.txt
 ```
 
-### Add the secrets to GitHub
+### The secrets (GitHub → Settings → Secrets and variables → Actions)
 
-| Secret name | Value |
-|-------------|-------|
-| `ANDROID_KEYSTORE_BASE64` | `base64 -w0 setu-release.keystore` (the full base64 string) |
-| `ANDROID_KEYSTORE_PASSWORD` | The store password you used above |
-| `ANDROID_KEY_ALIAS` | `setu` (or whatever alias you chose) |
-| `ANDROID_KEY_PASSWORD` | The key password you used above |
-
-Once all four secrets are set, the workflow will automatically build **both** a debug
-and a signed release APK. The release APK will appear as
-`Setu-1.0.<N>-release.apk` in the release assets.
-
-> ⚠️ **Never commit the `.keystore` file or passwords to the repository.**
+| Secret | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | contents of `keystore-base64.txt` |
+| `ANDROID_KEYSTORE_PASSWORD` | the password |
+| `ANDROID_KEY_ALIAS` | `setu` |
+| `ANDROID_KEY_PASSWORD` | the same password (a PKCS12 key uses the store password) |
 
 ---
 
@@ -115,14 +117,16 @@ and a signed release APK. The release APK will appear as
 apps/mobile/
 ├── capacitor.config.ts       # Capacitor config (server URL, app ID, etc.)
 ├── package.json              # @capacitor/core, @capacitor/android, @capacitor/app
-├── www/
-│   └── index.html            # Fallback "Loading…" page (required by Capacitor)
-└── scripts/
-    └── generate-icons.sh     # Resizes icon-512.png into Android mipmap densities
+├── www/index.html            # Fallback "Loading…" page (required by Capacitor)
+├── scripts/generate-icons.sh # Resizes icon-512.png into Android mipmap densities
+└── android/                  # The native Android project (committed)
+    └── app/src/main/java/org/artofliving/setu/
+        ├── MainActivity.java   # Capacitor activity; runs the update check on resume
+        └── UpdateChecker.java  # "Update available" dialog, download and install
 ```
 
-The `android/` directory is generated in CI by `npx cap add android` and is
-git-ignored.
+`android/` is committed because it holds native code. CI runs `npx cap sync android`, which
+writes the server URL and plugins into it; generated files there stay git-ignored.
 
 ---
 
@@ -164,16 +168,42 @@ behavior inside a Capacitor WebView varies by Android version and device:
 
 ## Updating the app
 
-To release a new version:
-1. Make changes under `apps/mobile/` and push to `main`, **or**
-2. Go to Actions and manually run the workflow.
+**Most changes need no new APK.** The app loads the live website, so web changes reach every
+phone as soon as the server updates. A new APK is only needed when the app shell changes
+(icon, name, permissions, native code, the server URL).
 
-Each run produces a unique version (`1.0.<run_number>`) and a matching GitHub Release.
-Old releases are preserved for rollback.
+### Publishing a new version
+
+1. Push a change under `apps/mobile/` to `main`, or run the workflow by hand (Actions →
+   *Build Android APK* → *Run workflow*).
+2. The run becomes version `1.0.<run number>` and is published as Release `v1.0.<run number>`.
+3. To make it **required** (people can't postpone it), tick *Make this update required* when
+   running by hand. That writes the line `required: true` into the release notes; you can also
+   add or remove that line by editing the release on GitHub.
+
+### What people see
+
+When Setu opens (and at most every 6 hours while it's used), it checks the latest Release. If
+its number is higher than the installed build, an **Update available** dialog shows the version
+and the release notes:
+
+- **Update** downloads the signed APK (with a progress notification) and opens Android's
+  installer, which installs it over the old app. The first time, Android asks to allow Setu to
+  install apps; the dialog explains this and opens the right settings screen.
+- **Later** hides that version until a newer one comes out (not offered for required updates).
+- If anything fails (no internet, GitHub busy), nothing is shown; it tries again later. If the
+  download fails, the APK opens in the browser instead.
+
+> Apps installed from the early **debug** builds (v1.0.4, v1.0.5) are signed with a different
+> key, so they can't update to signed releases. Uninstall them once and install the latest
+> release; from then on updates work in place.
 
 ---
 
 ## Permissions
 
-The app requests only the **INTERNET** permission (Capacitor default). No camera,
-contacts, location, or storage permissions are requested.
+- **INTERNET** - to load Setu.
+- **REQUEST_INSTALL_PACKAGES** - so Setu can offer its own updates. Android still asks the
+  person to confirm every install.
+
+No camera, contacts, location, or storage permissions are requested.

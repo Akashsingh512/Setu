@@ -11,6 +11,8 @@ coverage/
 .expo/
 ios/
 android/
+# ...except the Capacitor Android project, which holds native code (e.g. the in-app updater).
+!apps/mobile/android/
 *.log
 .DS_Store
 supabase/.temp/
