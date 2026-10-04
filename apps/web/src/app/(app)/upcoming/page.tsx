@@ -5,7 +5,7 @@ import { getOrgSettings, requireProfile } from '@/lib/auth';
 import { getCourses, getTeams } from '@/lib/data';
 import { createClient } from '@/lib/supabase/server';
 import type { UpcomingSession } from '@/lib/types';
-import { CancelSessionButton, SessionForm } from './session-form';
+import { CancelSessionButton, CompleteSessionButton, SessionForm } from './session-form';
 
 export const metadata: Metadata = { title: 'Upcoming Programs' };
 
@@ -104,6 +104,7 @@ export default async function UpcomingPage({ searchParams }: { searchParams: Pro
                           lockedTeamId={profile.role === 'teacher' ? profile.team_id : null}
                           defaultTimeZone={settings.default_timezone}
                         />
+                        {running ? <CompleteSessionButton sessionId={s.id} /> : null}
                         <CancelSessionButton sessionId={s.id} />
                       </span>
                     ) : null}

@@ -5,7 +5,7 @@ import { FormMessage, SubmitButton, type ActionState } from '@/components/form';
 import { Button, Card, Field, Input, Select, Textarea } from '@/components/ui';
 import { toLocalInputValue } from '@/lib/format';
 import type { Course, CourseSession, Team } from '@/lib/types';
-import { cancelSession, saveSession } from '../courses/actions';
+import { cancelSession, completeSession, saveSession } from '../courses/actions';
 
 /** Publish a new session, or edit `session` when given. */
 export function SessionForm({
@@ -177,6 +177,22 @@ export function CancelSessionButton({ sessionId }: { sessionId: string }) {
       }}
     >
       {pending ? 'Cancelling…' : 'Cancel session'}
+    </button>
+  );
+}
+
+export function CompleteSessionButton({ sessionId }: { sessionId: string }) {
+  const [pending, start] = useTransition();
+  return (
+    <button
+      type="button"
+      className="text-ok hover:underline disabled:opacity-50"
+      disabled={pending}
+      onClick={() => {
+        if (confirm('Mark this program as completed? It leaves the Upcoming list.')) start(async () => void (await completeSession(sessionId)));
+      }}
+    >
+      {pending ? 'Saving…' : 'Mark completed'}
     </button>
   );
 }

@@ -75,3 +75,18 @@ export async function cancelSession(sessionId: string): Promise<ActionState> {
   revalidatePath('/upcoming');
   return { ok: true };
 }
+
+/** Finish a running program early (programs are also completed automatically once they end). */
+export async function completeSession(sessionId: string): Promise<ActionState> {
+  const supabase = await createClient();
+  const { data: saved, error } = await supabase
+    .from('course_sessions')
+    .update({ status: 'completed' })
+    .eq('id', sessionId)
+    .eq('status', 'scheduled')
+    .select('id');
+  if (error) return { error: friendlyError(error) };
+  if (!saved?.length) return { error: "You don't have permission to change this session." };
+  revalidatePath('/upcoming');
+  return { ok: true };
+}
