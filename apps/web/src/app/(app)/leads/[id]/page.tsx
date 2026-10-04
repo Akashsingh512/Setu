@@ -281,6 +281,7 @@ export default async function LeadPage({
               leadId={lead.id}
               currentAssignee={lead.assigned_to}
               blocked={blocked}
+              registered={lead.status === 'registered' || lead.status === 'converted'}
               volunteers={profiles
                 .filter((p) => p.role === 'volunteer' && p.status === 'active')
                 .map((p) => ({ id: p.id, name: p.full_name || p.email || 'Volunteer' }))}

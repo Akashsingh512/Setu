@@ -297,11 +297,14 @@ export function AssignBox({
   currentAssignee,
   volunteers,
   blocked,
+  registered = false,
 }: {
   leadId: string;
   currentAssignee: string | null;
   volunteers: { id: string; name: string }[];
   blocked: boolean;
+  /** Registered with a volunteer: stays with them (the database enforces this too). */
+  registered?: boolean;
 }) {
   const [assignee, setAssignee] = useState('');
   const [msg, setMsg] = useState<{ ok?: boolean; text: string } | null>(null);
@@ -313,6 +316,8 @@ export function AssignBox({
       <h2 className="mb-3 font-semibold">{currentAssignee ? 'Reassign' : 'Assign'}</h2>
       {blocked ? (
         <p className="text-sm text-ink-muted">Do Not Contact leads cannot be assigned.</p>
+      ) : registered && currentAssignee ? (
+        <p className="text-sm text-ink-muted">Registered leads stay with the volunteer who registered them, so they can&apos;t be reassigned or unassigned.</p>
       ) : (
         <div className="flex flex-col gap-2">
           {msg ? <Alert tone={msg.ok ? 'ok' : 'danger'}>{msg.text}</Alert> : null}

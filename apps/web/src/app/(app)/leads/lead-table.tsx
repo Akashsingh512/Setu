@@ -22,6 +22,7 @@ export interface LeadRow {
 
 const SKIP_REASONS: Record<string, string> = {
   already_assigned: 'already assigned to this volunteer',
+  registered: 'registered (they stay with their volunteer)',
   do_not_contact: 'marked Do Not Contact',
   archived: 'archived',
   not_found: 'not found',
@@ -118,6 +119,10 @@ export function LeadTable({
               </>
             ) : null}
           </Alert>
+        </div>
+      ) : result?.ok && result.message ? (
+        <div className="mb-3">
+          <Alert tone="ok">{result.message}</Alert>
         </div>
       ) : null}
 

@@ -135,10 +135,14 @@ export async function idsForFilter(search: string): Promise<string[]> {
 
 export async function unassignLeads(leadIds: string[]): Promise<ActionState> {
   const supabase = await createClient();
-  const { error } = await supabase.rpc('unassign_leads', { p_lead_ids: leadIds });
+  const { data, error } = await supabase.rpc('unassign_leads', { p_lead_ids: leadIds });
   if (error) return { error: friendlyError(error) };
   revalidatePath('/leads');
-  return { ok: true, message: 'Unassigned.' };
+  const kept = (data as { kept_registered?: number } | null)?.kept_registered ?? 0;
+  return {
+    ok: true,
+    message: kept ? `Unassigned. ${kept} registered lead(s) were kept with their volunteer.` : 'Unassigned.',
+  };
 }
 
 export async function archiveLeads(leadIds: string[], reason?: string): Promise<ActionState> {
