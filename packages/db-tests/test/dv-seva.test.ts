@@ -153,7 +153,12 @@ describe('automatic allocation', () => {
     expect(r.seva).toMatchObject({ status: 'no_leads' });
     expect((await request()).status).toBe('no_leads');
     expect(await sq(f.db, `select * from public.notifications where recipient_id = $1 and type = 'seva_request_declined'`, [f.volA1])).toHaveLength(1);
-    expect((await outbox())).toEqual([]);
+    // Told on WhatsApp too (privately: the request came from a group), and the team's staff are told in Setu.
+    const out = await outbox();
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ chat_jid: `${PHONE[f.volA1]!.replace('+', '')}@s.whatsapp.net`, kind: 'direct' });
+    expect(out[0]!.body).toContain('All leads are already assigned right now');
+    expect(await sq(f.db, `select * from public.notifications where type = 'seva_no_leads'`)).not.toHaveLength(0);
   });
 });
 
@@ -225,7 +230,7 @@ describe('approval and identity', () => {
     const r = await ask(PHONE[f.volA1]!);
     expect(r.seva).toMatchObject({ status: 'pending', verified: true });
     expect(await held(f.volA1)).toBe(0);
-    expect(await outbox()).toEqual([]);
+    expect((await outbox()).map((o) => o.body)).toEqual([expect.stringContaining('has been received')]);
     expect((await sq(f.db, `select * from public.notifications where type = 'seva_request_pending'`)).length).toBeGreaterThan(0);
 
     const id = (await request()).id;
@@ -257,7 +262,8 @@ describe('approval and identity', () => {
     expect(r.seva).toMatchObject({ status: 'pending', verified: false });
     const id = (await request()).id;
     await expect(q(f.db, f.admin, `select public.dv_seva_approve($1)`, [id])).rejects.toThrow(/Identify/);
-    expect(await outbox()).toEqual([]);
+    // Unknown, so the acknowledgement goes to the group it came from, with no lead data.
+    expect(await outbox()).toEqual([expect.objectContaining({ chat_jid: GROUP, kind: 'reply' })]);
 
     await q(f.db, f.admin, `select public.dv_seva_set_requester($1, $2)`, [id, f.volA2]);
     await q(f.db, f.admin, `select public.dv_seva_approve($1)`, [id]);

@@ -57,7 +57,10 @@ describe('asking approvers', () => {
     expect(msg!.body).toContain('Can receive up to 5 now · 6 free lead(s)');
     // Not to people who aren't approvers (even super admins), and lead numbers are never in it.
     expect(await outboxTo(PHONE[f.admin]!)).toEqual([]);
-    expect(await outboxTo(PHONE[f.volA1]!)).toEqual([]);
+    // The volunteer only hears that the request is waiting.
+    const toVolunteer = await outboxTo(PHONE[f.volA1]!);
+    expect(toVolunteer).toHaveLength(1);
+    expect(toVolunteer[0]!.body).toContain('has been received. A coordinator will approve it shortly');
     const phones = await sq<{ phone: string }>(f.db, `select phone from public.leads`);
     for (const p of phones) expect(msg!.body).not.toContain(p.phone);
   });
@@ -97,7 +100,7 @@ describe('deciding by reply', () => {
     expect(by).toEqual([{ assigned_by: f.teacherA }]);
     // Confirmation back to the approver, numbers to the volunteer.
     expect((await outboxTo(PHONE[f.teacherA]!)).map((o) => o.body).some((b) => b.startsWith('✅'))).toBe(true);
-    expect((await outboxTo(PHONE[f.volA1]!)).map((o) => o.kind)).toEqual(['seva_numbers']);
+    expect((await outboxTo(PHONE[f.volA1]!)).map((o) => o.kind)).toEqual(['direct', 'seva_numbers']); // "received", then the numbers
   });
 
   it('YES with a number approves only that many', async () => {
@@ -114,6 +117,16 @@ describe('deciding by reply', () => {
     const [note] = await sq<{ body: string }>(f.db, `select body from public.notifications where recipient_id = $1 and type = 'seva_request_declined'`, [f.volA1]);
     expect(note!.body).toBe('finish current leads first');
     expect(await held(f.volA1)).toBe(0);
+    // And on WhatsApp, privately, with the reason.
+    expect((await outboxTo(PHONE[f.volA1]!)).at(-1)!.body).toContain('could not be fulfilled this time.\nReason: finish current leads first');
+  });
+
+  it('with Digital Volunteer switched off, nobody is messaged', async () => {
+    const req = await askSeva();
+    await sq(f.db, `delete from public.wa_outbox`);
+    await sq(f.db, `update public.wa_account set enabled = false where id`);
+    await q(f.db, f.admin, `select public.dv_seva_reject($1, 'no')`, [req.id]);
+    expect(await sq(f.db, `select * from public.wa_outbox`)).toEqual([]);
   });
 
   it('a request is decided only once, however many replies arrive', async () => {
@@ -165,7 +178,8 @@ describe('who may decide', () => {
     await q(f.db, f.admin, `select public.dv_set_operator_permissions($1, '{assign_seva}')`, [f.volA1]);
     await q(f.db, f.admin, `select public.dv_set_whatsapp_approver($1, true)`, [f.volA1]);
     const req = await askSeva(PHONE[f.volA1]!);
-    expect(await outboxTo(PHONE[f.volA1]!)).toEqual([]);
+    // Only the "received" acknowledgement, never an approval request.
+    expect((await outboxTo(PHONE[f.volA1]!)).map((o) => o.body).some((b) => b.includes('YES'))).toBe(false);
     expect((await reply(f.volA1, `YES ${req.ref}`, 'approve', req.ref)).reply).toBe('You cannot approve your own request.');
     expect(await held(f.volA1)).toBe(0);
   });
