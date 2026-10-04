@@ -6,7 +6,7 @@ import { formatDateTime } from '@/lib/format';
 import { createClient } from '@/lib/supabase/server';
 import { gatewayAlive, type WaAccount } from '../shared';
 import { AutoRefresh } from '../auto-refresh';
-import { DmSettingsForm, LinkPanel, SafetySwitches } from './controls';
+import { DmSettingsForm, LinkPanel, ReplyApproverToggle, SafetySwitches } from './controls';
 
 export const metadata: Metadata = { title: 'WhatsApp account' };
 
@@ -14,10 +14,11 @@ export default async function AccountPage() {
   await requireDv('manage_integration');
   const supabase = await createClient();
   const settings = await getOrgSettings();
-  const [{ data: acc }, { data: pairing }, { data: commands }] = await Promise.all([
+  const [{ data: acc }, { data: pairing }, { data: commands }, { data: replyApprovers }] = await Promise.all([
     supabase.from('wa_account').select('*').eq('id', true).maybeSingle<WaAccount>(),
     supabase.from('wa_pairing').select('qr_data_url, updated_at').eq('id', true).maybeSingle<{ qr_data_url: string | null; updated_at: string }>(),
     supabase.from('wa_commands').select('id, command, requested_at, done_at, result').order('requested_at', { ascending: false }).limit(5),
+    supabase.rpc('dv_reply_approver_candidates'),
   ]);
   if (!acc) return <Alert tone="warn">Run the Digital Volunteer database migration first.</Alert>;
   // eslint-disable-next-line react-hooks/purity -- server component: rendered once per request
@@ -47,6 +48,22 @@ export default async function AccountPage() {
         <div className="p-5">
           <DmSettingsForm mode={acc.dm_mode} courseInfo={acc.dm_course_info} followupSync={acc.dm_followup_sync} sevaRequests={acc.dm_seva_requests} />
         </div>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Approve suggested replies from WhatsApp"
+          description="Chosen people get suggested replies on their own WhatsApp (which ones: Settings → AI) and answer SEND 12, EDIT 12 new text, or SKIP 12. They need the Reply permission and a phone number in Setu."
+        />
+        {((replyApprovers ?? []) as unknown[]).length === 0 ? (
+          <p className="px-5 py-4 text-sm text-ink-muted">Nobody can send replies yet. Give someone the Reply permission on Operators.</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {((replyApprovers ?? []) as { id: string; full_name: string; has_phone: boolean; can_reply: boolean; is_approver: boolean }[]).map((a) => (
+              <ReplyApproverToggle key={a.id} id={a.id} name={a.full_name} hasPhone={a.has_phone} canReply={a.can_reply} on={a.is_approver} />
+            ))}
+          </ul>
+        )}
       </Card>
 
       <Card>

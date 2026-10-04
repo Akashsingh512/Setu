@@ -15,12 +15,14 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1146.0",
     "@crm/shared": "*",
     "@supabase/supabase-js": "^2.117.2",
     "baileys": "^7.0.0-rc14",
     "pino": "^10.4.0",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "zod": "^4.6.5"
   },
   "engines": {
     "node": ">=20.12"

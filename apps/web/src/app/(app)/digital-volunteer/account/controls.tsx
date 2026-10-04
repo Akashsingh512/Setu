@@ -4,6 +4,7 @@ import { DV_MODE_LABELS, formatPhone, WA_STATUS_LABELS, type DvMode } from '@crm
 import { FormMessage, SubmitButton, type ActionState } from '@/components/form';
 import { Alert, Badge, Button, Field, Select } from '@/components/ui';
 import { requestCommand, saveDmSettings, setSwitches } from '../actions';
+import { setReplyApprover } from '../rule-actions';
 
 export function LinkPanel({
   status,
@@ -151,5 +152,36 @@ export function DmSettingsForm({
       <FormMessage state={state} />
       <SubmitButton>Save</SubmitButton>
     </form>
+  );
+}
+
+export function ReplyApproverToggle({ id, name, hasPhone, canReply, on }: { id: string; name: string; hasPhone: boolean; canReply: boolean; on: boolean }) {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const blocked = !on && (!hasPhone || !canReply);
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
+      <div>
+        <p className="font-medium">
+          {name} {on ? <Badge tone="ok">Gets suggested replies on WhatsApp</Badge> : null}
+        </p>
+        <p className="text-xs text-ink-muted">
+          {!canReply ? 'Does not have the Reply permission' : !hasPhone ? 'No phone number saved in Setu' : on ? 'Answers SEND / EDIT / SKIP on WhatsApp' : 'Approves in the inbox only'}
+        </p>
+        {error ? <p className="text-xs text-danger">{error}</p> : null}
+      </div>
+      <Button
+        variant={on ? 'secondary' : 'primary'}
+        disabled={pending || blocked}
+        onClick={() =>
+          start(async () => {
+            const r = await setReplyApprover(id, !on);
+            setError(r.error ?? null);
+          })
+        }
+      >
+        {on ? 'Stop' : 'Send on WhatsApp'}
+      </Button>
+    </li>
   );
 }

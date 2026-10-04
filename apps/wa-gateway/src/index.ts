@@ -24,6 +24,7 @@ import QRCode from 'qrcode';
 import pino from 'pino';
 import { usePostgresAuthState } from './auth-state.js';
 import { isGroupJid, isLidJid, phoneFromJid } from './jid.js';
+import { testAi } from './ai.js';
 import { processMessage } from './process.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL?.trim();
@@ -455,6 +456,14 @@ async function runCommands() {
           await setStatus({ status: 'logged_out', phone_e164: null, display_name: null, connected_at: null });
         }
         result = 'Unlinked';
+      } else if (cmd.command === 'test_ai') {
+        // Settings > AI > Test: one small real call with the saved keys.
+        const r = await testAi(db);
+        await db
+          .from('dv_ai_settings')
+          .update({ last_test_at: new Date().toISOString(), last_test_ok: r.ok, last_test_result: r.result })
+          .eq('id', true);
+        result = r.result;
       } else if (cmd.command === 'sync_groups') {
         if (!connected) result = 'Not connected';
         else {

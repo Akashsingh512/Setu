@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Card, Field, Input, PageHeader } from '@/components/ui';
 import { getOrgSettings, requireSuperAdmin } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
+import { AiSettingsForm, type AiSettings } from './ai-settings';
 import { SettingsSubmit } from './settings-submit';
 
 export const metadata: Metadata = { title: 'Settings' };
@@ -38,6 +39,7 @@ async function saveSettings(formData: FormData) {
 export default async function SettingsPage() {
   await requireSuperAdmin();
   const s = await getOrgSettings();
+  const { data: ai } = await (await createClient()).rpc('dv_ai_settings_get');
   return (
     <>
       <PageHeader title="Settings" description="Organisation-wide rules. Changes apply to new assignments." />
@@ -83,6 +85,11 @@ export default async function SettingsPage() {
             <SettingsSubmit />
           </div>
         </form>
+      </Card>
+      <Card className="mt-6 max-w-2xl p-5">
+        <h2 className="font-semibold">AI for Digital Volunteer</h2>
+        <p className="mb-4 text-sm text-ink-muted">Helps the WhatsApp assistant understand messages and draft replies. Optional: without it, reply rules and keywords still work.</p>
+        {ai ? <AiSettingsForm s={ai as AiSettings} /> : <p className="text-sm text-danger">Could not load AI settings. Run the latest database migration.</p>}
       </Card>
     </>
   );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCourseAnswer, detectIntent, extractRequestedCount, matchCourses, parseApprovalReply, unknownDvPlaceholders, type AnswerCourse, type AnswerSession } from '../src/dv-answers';
+import { buildCourseAnswer, detectIntent, extractRequestedCount, matchCourses, matchRule, parseApprovalReply, parseDraftReply, unknownDvPlaceholders, type AnswerCourse, type AnswerSession, type DvRule } from '../src/dv-answers';
 
 describe('detectIntent', () => {
   it.each([
@@ -154,4 +154,47 @@ describe('parseApprovalReply', () => {
       expect(parseApprovalReply(text)).toBeNull();
     },
   );
+});
+
+describe('reply rules', () => {
+  const rule = (o: Partial<DvRule>): DvRule => ({
+    id: o.name ?? 'r', name: 'r', enabled: true, priority: 100, keywords: [], action: 'reply', reply_body: 'x', course_id: null,
+    in_groups: true, in_direct: true, ...o,
+  });
+  const rules = [
+    rule({ name: 'timing', keywords: ['satsang timing', 'kab hai satsang'], priority: 10 }),
+    rule({ name: 'satsang', keywords: ['satsang'], priority: 20 }),
+    rule({ name: 'hindi', keywords: ['सत्संग'], priority: 30 }),
+    rule({ name: 'groups only', keywords: ['parking'], in_direct: false }),
+    rule({ name: 'off', keywords: ['fees'], enabled: false }),
+  ];
+
+  it('matches whole words and phrases, lowest priority number first', () => {
+    expect(matchRule('What is the Satsang timing?', rules, 'group')?.rule.name).toBe('timing');
+    expect(matchRule('satsang kal hai?', rules, 'group')?.rule.name).toBe('satsang');
+    expect(matchRule('Kab hai satsang??', rules, 'group')?.keyword).toBe('kab hai satsang');
+    expect(matchRule('satsangs everywhere', rules, 'group')).toBeNull(); // not a whole word
+  });
+  it('Devanagari matches inside words', () => {
+    expect(matchRule('आज सत्संग कब है', rules, 'group')?.rule.name).toBe('hindi');
+  });
+  it('respects where a rule applies, and switched-off rules', () => {
+    expect(matchRule('parking?', rules, 'group')?.rule.name).toBe('groups only');
+    expect(matchRule('parking?', rules, 'direct')).toBeNull();
+    expect(matchRule('what are the fees', rules, 'group')).toBeNull();
+  });
+});
+
+describe('approving drafts on WhatsApp', () => {
+  it('reads SEND / EDIT / SKIP with a number', () => {
+    expect(parseDraftReply('SEND 12')).toEqual({ action: 'send', ref: 12, text: null });
+    expect(parseDraftReply('send #12')).toEqual({ action: 'send', ref: 12, text: null });
+    expect(parseDraftReply('Edit 7 Yes, parking is free.')).toEqual({ action: 'edit', ref: 7, text: 'Yes, parking is free.' });
+    expect(parseDraftReply('skip 9 not needed')).toEqual({ action: 'skip', ref: 9, text: null });
+  });
+  it('ignores anything unclear or different', () => {
+    expect(parseDraftReply('send 12 later?')).toBeNull();
+    expect(parseDraftReply('YES 12')).toBeNull();
+    expect(parseDraftReply('please send 12 numbers')).toBeNull();
+  });
 });

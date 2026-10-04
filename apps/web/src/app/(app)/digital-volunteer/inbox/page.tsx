@@ -35,6 +35,8 @@ type Outbox = {
   quoted_message_id: string | null;
   send_after: string;
   announcement_id: string | null;
+  ai_draft: boolean;
+  approval_ref: number;
 };
 
 export default async function InboxPage({ searchParams }: { searchParams: Promise<{ chat?: string }> }) {
@@ -53,7 +55,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       ? supabase.from('wa_messages').select('*').eq('chat_jid', chat).order('sent_at', { ascending: false }).limit(150)
       : Promise.resolve({ data: [] as Msg[] }),
     chat
-      ? supabase.from('wa_outbox').select('id, chat_jid, body, status, last_error, created_at, quoted_message_id, send_after, announcement_id').eq('chat_jid', chat).in('status', ['queued', 'sending', 'failed', 'pending_approval']).order('created_at')
+      ? supabase.from('wa_outbox').select('id, chat_jid, body, status, last_error, created_at, quoted_message_id, send_after, announcement_id, ai_draft, approval_ref').eq('chat_jid', chat).in('status', ['queued', 'sending', 'failed', 'pending_approval']).order('created_at')
       : Promise.resolve({ data: [] as Outbox[] }),
     showFollowUps ? supabase.rpc('dv_followup_candidates', { p_chat_jid: chat }) : Promise.resolve({ data: [] as FollowUpCandidate[] }),
   ]);
@@ -175,7 +177,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                     .filter((o) => o.quoted_message_id === m.id)
                     .map((o) => (
                       <div key={o.id} className="mt-2 flex w-full justify-end">
-                        <SuggestionCard id={o.id} body={o.body ?? ''} canSend={access.can('reply_messages')} />
+                        <SuggestionCard id={o.id} body={o.body ?? ''} canSend={access.can('reply_messages')} aiDraft={o.ai_draft} refNo={o.approval_ref} />
                       </div>
                     ))}
                 </li>

@@ -41,13 +41,30 @@ export function CancelOutboxButton({ id }: { id: string }) {
 }
 
 /** A reply the bot prepared from course data, waiting for a person (assisted mode). */
-export function SuggestionCard({ id, body, canSend }: { id: string; body: string; canSend: boolean }) {
+export function SuggestionCard({
+  id,
+  body,
+  canSend,
+  aiDraft = false,
+  refNo,
+}: {
+  id: string;
+  body: string;
+  canSend: boolean;
+  /** Written by AI from Setu's data: check it before sending. */
+  aiDraft?: boolean;
+  /** The number approvers use on WhatsApp (SEND 12). */
+  refNo?: number;
+}) {
   const [text, setText] = useState(body);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   return (
     <div className="w-full max-w-[85%] rounded-xl border border-accent/40 bg-accent-soft/60 p-3">
-      <p className="mb-2 text-xs font-medium text-accent">Suggested reply · from verified course data</p>
+      <p className="mb-2 text-xs font-medium text-accent">
+        {refNo ? `#${refNo} · ` : ''}
+        {aiDraft ? '🤖 AI draft from Setu’s data · check it before sending' : 'Suggested reply · from verified course data'}
+      </p>
       {canSend ? (
         <>
           <label htmlFor={`sugg-${id}`} className="sr-only">

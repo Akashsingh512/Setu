@@ -337,3 +337,80 @@ export function unknownDvPlaceholders(template: string): string[] {
   return [...out];
 }
 
+
+// ---------------------------------------------------------------------------
+// Reply rules (mirrors public.dv_rules) and approving drafts on WhatsApp
+// ---------------------------------------------------------------------------
+export const DV_RULE_ACTIONS = ['reply', 'course', 'seva', 'handover'] as const;
+export type DvRuleAction = (typeof DV_RULE_ACTIONS)[number];
+export const DV_RULE_ACTION_INFO: Record<DvRuleAction, { label: string; description: string }> = {
+  reply: { label: 'Send my reply', description: 'Replies with the text you write here' },
+  course: { label: 'Send course details', description: "Replies with the chosen course's next session (or its details)" },
+  seva: { label: 'Seva request', description: 'Treats the message as a request for leads to call' },
+  handover: { label: 'Hand to a person', description: 'No reply: flags the message in the inbox for someone to answer' },
+};
+
+export interface DvRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  priority: number;
+  keywords: string[];
+  action: DvRuleAction;
+  reply_body: string | null;
+  course_id: string | null;
+  in_groups: boolean;
+  in_direct: boolean;
+}
+
+/** Latin-script words match whole words; other scripts (e.g. Devanagari) match anywhere. */
+function containsKeyword(text: string, keyword: string): boolean {
+  const k = norm(keyword).replace(/\?/g, ' ').trim();
+  if (!k) return false;
+  if (/[^\x00-\x7f]/.test(k)) return text.includes(k);
+  return ` ${text} `.includes(` ${k} `);
+}
+
+/**
+ * The rule a message triggers: the enabled rule with the lowest priority number whose
+ * trigger word or phrase appears in it, for this kind of chat. Null when none does.
+ */
+export function matchRule<R extends Pick<DvRule, 'enabled' | 'priority' | 'keywords' | 'in_groups' | 'in_direct'>>(
+  text: string | null | undefined,
+  rules: R[],
+  where: 'group' | 'direct',
+): { rule: R; keyword: string } | null {
+  if (!text) return null;
+  const t = norm(text).replace(/\?/g, ' ').replace(/\s+/g, ' ').trim();
+  const usable = rules
+    .filter((r) => r.enabled && (where === 'group' ? r.in_groups : r.in_direct))
+    .sort((a, b) => a.priority - b.priority);
+  for (const rule of usable) {
+    const keyword = rule.keywords.find((k) => containsKeyword(t, k));
+    if (keyword) return { rule, keyword };
+  }
+  return null;
+}
+
+export interface DraftDecision {
+  action: 'send' | 'edit' | 'skip';
+  ref: number;
+  /** The approver's own text (edit only). */
+  text: string | null;
+}
+
+/**
+ * An approver's WhatsApp answer to a suggested reply: "SEND 12", "EDIT 12 new text",
+ * "SKIP 12". Different words from seva approvals (YES/NO), so the two never mix.
+ * Whether the sender may decide is checked in the database.
+ */
+export function parseDraftReply(text: string | null | undefined): DraftDecision | null {
+  if (!text) return null;
+  const m = /^\s*(send|edit|skip)\s*#?\s*(\d{1,9})(?!\d)\s*([\s\S]*)$/i.exec(text.trim());
+  if (!m) return null;
+  const action = m[1]!.toLowerCase() as DraftDecision['action'];
+  const ref = Number(m[2]);
+  const rest = m[3]!.trim();
+  if (action === 'send' && rest !== '') return null; // "send 12 later?" is not a clear decision
+  return { action, ref, text: action === 'edit' ? rest.slice(0, 4000) || null : null };
+}
