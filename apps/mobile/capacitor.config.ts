@@ -26,9 +26,6 @@ const config: CapacitorConfig = {
   },
 
   android: {
-    // Allow mixed content so the WebView doesn't block sub-resources
-    allowMixedContent: true,
-    // Back button navigates WebView history (Capacitor 7 default, explicit for clarity)
     backgroundColor: "#1a1a2e",
   },
 };
