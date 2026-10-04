@@ -84,13 +84,19 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
-      # ── (Optional) Release / signed APK ────────────────────
+      - name: Check signing secrets
+        id: signing
+        env:
+          HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$HAS_KEYSTORE" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build signed release APK
-        if: |
-          secrets.ANDROID_KEYSTORE_BASE64 != '' &&
-          secrets.ANDROID_KEYSTORE_PASSWORD != '' &&
-          secrets.ANDROID_KEY_ALIAS != '' &&
-          secrets.ANDROID_KEY_PASSWORD != ''
+        if: steps.signing.outputs.available == 'true'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
