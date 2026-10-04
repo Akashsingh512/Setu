@@ -15,6 +15,7 @@ import {
   parseDraftReply,
   type AnswerCourse,
   type AnswerSession,
+  type CourseAnswer,
   type DvRule,
   type DvTemplateKind,
 } from '@crm/shared';
@@ -22,8 +23,9 @@ import { aiClassifyEnabled, aiDraftEnabled, classifyWithAi, draftReply, loadAiSe
 
 type Data = {
   courses: AnswerCourse[];
-  sessions: (AnswerSession & { team_id: string | null })[];
-  templates: Partial<Record<DvTemplateKind, string>>;
+  sessions: (AnswerSession & { team_id: string | null; poster_path: string | null })[];
+  templates: Partial<Record<DvTemplateKind, string | null>>;
+  templatePosters: Partial<Record<DvTemplateKind, string | null>>;
   rules: DvRule[];
   timeZone: string;
   teamByGroup: Map<string, string | null>;
@@ -38,12 +40,12 @@ async function loadData(db: SupabaseClient): Promise<Data> {
     db.from('courses').select('id, name, short_description, registration_url, is_active'),
     db
       .from('course_sessions')
-      .select('id, course_id, title, starts_at, ends_at, timezone, schedule_note, mode, venue, city, meeting_url, registration_url, instructor_name, status, team_id')
+      .select('id, course_id, title, starts_at, ends_at, timezone, schedule_note, mode, venue, city, meeting_url, registration_url, instructor_name, status, team_id, poster_path')
       .eq('status', 'scheduled')
       .gt('ends_at', new Date().toISOString())
       .order('starts_at')
       .limit(200),
-    db.from('dv_response_templates').select('kind, body'),
+    db.from('dv_response_templates').select('kind, body, poster_path'),
     db.from('org_settings').select('default_timezone').single(),
     db.from('wa_groups').select('id, responsible:profiles!wa_groups_responsible_admin_id_fkey(team_id)'),
     db.from('dv_rules').select('id, name, enabled, priority, keywords, action, reply_body, course_id, in_groups, in_direct').eq('enabled', true),
@@ -53,6 +55,7 @@ async function loadData(db: SupabaseClient): Promise<Data> {
     courses: (courses.data ?? []) as AnswerCourse[],
     sessions: (sessions.data ?? []) as Data['sessions'],
     templates: Object.fromEntries((templates.data ?? []).map((t) => [t.kind, t.body])),
+    templatePosters: Object.fromEntries((templates.data ?? []).map((t) => [t.kind, t.poster_path])),
     rules: (rules.data ?? []) as DvRule[], // missing table (migration not run yet) = no rules
     timeZone: (settings.data?.default_timezone as string | undefined) ?? 'Asia/Kolkata',
     teamByGroup: new Map(
@@ -61,6 +64,12 @@ async function loadData(db: SupabaseClient): Promise<Data> {
     loadedAt: Date.now(),
   };
   return cache;
+}
+
+/** The poster for a course answer: the program's own, else the course response's. */
+function posterFor(data: Data, answer: CourseAnswer): string | null {
+  const own = answer.sessionId ? data.sessions.find((s) => s.id === answer.sessionId)?.poster_path : null;
+  return own || data.templatePosters[answer.kind] || null;
 }
 
 const looksLikeQuestion = (t: string) => t.includes('?') || t.trim().split(/\s+/).length >= 4;
@@ -167,6 +176,7 @@ export async function processMessage(
 
   let reply: string | null = null;
   let replyKind: string | null = null;
+  let poster: string | null = null;
   if (rule) {
     if (rule.action === 'reply') {
       intent = 'course_info';
@@ -178,6 +188,7 @@ export async function processMessage(
       const answer = buildCourseAnswer({ text: '', courses: data.courses, sessions, templates: data.templates, timeZone: data.timeZone, courseHintIds: [rule.course_id] });
       reply = answer.body;
       replyKind = answer.kind;
+      poster = posterFor(data, answer);
     } else if (rule.action === 'seva') {
       intent = 'seva_request';
     } else {
@@ -187,6 +198,7 @@ export async function processMessage(
     const answer = buildCourseAnswer({ text, courses: data.courses, sessions, templates: data.templates, timeZone: data.timeZone, courseHintIds });
     reply = answer.body;
     replyKind = answer.kind;
+    poster = posterFor(data, answer);
     // Nothing in Setu answers it: an AI draft can do better than "a volunteer will reply".
     if (answer.kind === 'fallback') aiQuestion = true;
   }
@@ -198,6 +210,7 @@ export async function processMessage(
       intent = 'course_info';
       reply = drafted;
       replyKind = 'ai_draft';
+      poster = null;
     }
   }
   if (aiQuestion && intent === 'none') intent = 'handover'; // a real question nobody answered: flag it for a person
@@ -211,6 +224,8 @@ export async function processMessage(
     // Only a hint ("share 5 numbers"): the database limits always decide the real number.
     p_requested_count: intent === 'seva_request' ? extractRequestedCount(text) : null,
     p_rule_id: rule?.id ?? null,
+    // Only sent when there is a poster, so the call also works before the poster migration.
+    ...(poster ? { p_media_path: poster } : {}),
   });
   if (error) log.warn({ err: error.message, id: msg.id }, 'could not record intent');
   // e.g. {intent: course_info, status: needs_review, send: pending_approval} = suggestion waiting in the Inbox

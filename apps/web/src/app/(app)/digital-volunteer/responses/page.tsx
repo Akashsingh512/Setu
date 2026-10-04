@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { DEFAULT_DV_TEMPLATES, DV_TEMPLATE_KINDS, type AnswerCourse, type AnswerSession, type DvTemplateKind } from '@crm/shared';
 import { getOrgSettings } from '@/lib/auth';
 import { requireDv } from '@/lib/dv';
+import { signPosters } from '@/lib/posters';
 import { createClient } from '@/lib/supabase/server';
 import { TemplateEditor } from './template-editor';
 
@@ -12,7 +13,7 @@ export default async function ResponsesPage() {
   const supabase = await createClient();
   const settings = await getOrgSettings();
   const [{ data: saved }, { data: courses }, { data: sessions }] = await Promise.all([
-    supabase.from('dv_response_templates').select('kind, body'),
+    supabase.from('dv_response_templates').select('kind, body, poster_path'),
     supabase.from('courses').select('id, name, short_description, registration_url, is_active').eq('is_active', true).order('name'),
     supabase
       .from('upcoming_sessions')
@@ -20,20 +21,25 @@ export default async function ResponsesPage() {
       .order('starts_at')
       .limit(20),
   ]);
-  const savedByKind = new Map((saved ?? []).map((t) => [t.kind as DvTemplateKind, t.body as string]));
+  const savedByKind = new Map((saved ?? []).map((t) => [t.kind as DvTemplateKind, t.body as string | null]));
+  const posterByKind = new Map((saved ?? []).map((t) => [t.kind as DvTemplateKind, t.poster_path as string | null]));
+  const posters = await signPosters(supabase, [...posterByKind.values()]);
 
   return (
     <div className="space-y-4">
       <p className="max-w-3xl text-sm text-ink-muted">
         The bot answers course questions using these templates, filled in from <strong className="text-ink">Courses</strong> and{' '}
         <strong className="text-ink">Upcoming Programs</strong>. It never makes up dates, venues or links: a line whose value is missing is left
-        out. The preview uses your real upcoming programs.
+        out. The preview uses your real upcoming programs. A poster is sent with the reply: the program&apos;s own poster (set in Upcoming
+        Programs), otherwise the one added here. Groups get it only when they allow media.
       </p>
       {DV_TEMPLATE_KINDS.map((kind) => (
         <TemplateEditor
           key={kind}
           kind={kind}
           saved={savedByKind.get(kind) ?? null}
+          posterPath={posterByKind.get(kind) ?? null}
+          posterUrl={posters[posterByKind.get(kind) ?? ''] ?? null}
           defaultBody={DEFAULT_DV_TEMPLATES[kind]}
           courses={(courses ?? []) as AnswerCourse[]}
           sessions={(sessions ?? []) as AnswerSession[]}

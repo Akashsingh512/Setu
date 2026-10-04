@@ -181,6 +181,17 @@ export async function logCall(leadId: string, _: ActionState | undefined, formDa
   return { ok: true, message: 'Call recorded.' };
 }
 
+/** Sends the message from the Setu WhatsApp number, with the program's poster when it has one. */
+export async function sendFromSetu(leadId: string, body: string, sessionId: string | null): Promise<ActionState> {
+  if (!body.trim()) return { error: 'Write a message.' };
+  if (body.length > 4000) return { error: 'The message is too long (4000 characters max).' };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('dv_send_lead_message', { p_lead_id: leadId, p_body: body, p_session_id: sessionId });
+  if (error) return { error: friendlyError(error) };
+  revalidatePath(`/leads/${leadId}`);
+  return { ok: true, message: (data as { poster?: boolean } | null)?.poster ? 'Sending with the poster from the Setu number.' : 'Sending from the Setu number.' };
+}
+
 export async function updateStatus(leadId: string, _: ActionState | undefined, formData: FormData): Promise<ActionState> {
   const status = String(formData.get('status') ?? '');
   const note = String(formData.get('note') ?? '').trim();

@@ -10,8 +10,9 @@ import {
   type DvTemplateKind,
 } from '@crm/shared';
 import { FormMessage, type ActionState } from '@/components/form';
+import { PosterInput } from '@/components/poster-input';
 import { Badge, Button, Card, Textarea } from '@/components/ui';
-import { saveTemplate } from '../actions';
+import { saveTemplate, setTemplatePoster } from '../actions';
 
 /** Runs the real answer builder with real data, steered to produce this template's case. */
 function preview(kind: DvTemplateKind, body: string, courses: AnswerCourse[], sessions: AnswerSession[], timeZone: string): string | null {
@@ -33,6 +34,8 @@ function preview(kind: DvTemplateKind, body: string, courses: AnswerCourse[], se
 export function TemplateEditor({
   kind,
   saved,
+  posterPath,
+  posterUrl,
   defaultBody,
   courses,
   sessions,
@@ -40,6 +43,8 @@ export function TemplateEditor({
 }: {
   kind: DvTemplateKind;
   saved: string | null;
+  posterPath: string | null;
+  posterUrl: string | null;
   defaultBody: string;
   courses: AnswerCourse[];
   sessions: AnswerSession[];
@@ -99,6 +104,20 @@ export function TemplateEditor({
           </div>
         </div>
         <div className="space-y-2">
+          {kind !== 'fallback' ? (
+            <div className="space-y-1 pb-2">
+              <p className="text-sm font-medium">Poster (optional)</p>
+              <p className="text-xs text-ink-muted">
+                {kind === 'course_details' ? 'Used when the program has no poster of its own. ' : ''}JPG, PNG or WebP, up to 5 MB.
+              </p>
+              <PosterInput
+                folder="templates"
+                currentPath={posterPath}
+                currentUrl={posterUrl}
+                onChange={async (path) => setState(await setTemplatePoster(kind, path))}
+              />
+            </div>
+          ) : null}
           <p className="text-sm font-medium">Preview with your data</p>
           {shown ? (
             <div className="rounded-xl border border-line bg-canvas px-4 py-3 text-sm whitespace-pre-wrap">{shown}</div>

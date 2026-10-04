@@ -12,7 +12,7 @@ import { FormMessage, SubmitButton, type ActionState } from '@/components/form';
 import { Alert, Button, Card, CardHeader, cn, Field, Input, Select, Textarea } from '@/components/ui';
 import { toLocalInputValue } from '@/lib/format';
 import type { Course, FollowUp, LeadStatus, MessageTemplate, UpcomingSession } from '@/lib/types';
-import { addNote, assignLeads, completeFollowUp, logCall, scheduleFollowUp, unassignLeads, updateStatus } from '../actions';
+import { addNote, assignLeads, completeFollowUp, logCall, scheduleFollowUp, sendFromSetu, unassignLeads, updateStatus } from '../actions';
 
 // ---------------------------------------------------------------------------
 // Call + WhatsApp
@@ -26,6 +26,8 @@ export function ContactPanel(props: {
   statuses: LeadStatus[];
   courses: Course[];
   sessions: UpcomingSession[];
+  /** Signed poster URLs by storage path. */
+  posterUrls: Record<string, string>;
   templates: MessageTemplate[];
   leadCourseId: string | null;
   volunteerDefaultCourseId: string | null;
@@ -149,6 +151,9 @@ function WhatsAppComposer(props: Parameters<typeof ContactPanel>[0]) {
   // Keep the volunteer's edits until the generated message changes (e.g. another course is chosen).
   const [edited, setEdited] = useState<{ base: string; text: string } | null>(null);
   const text = edited && edited.base === generated ? edited.text : generated;
+  const [sent, setSent] = useState<ActionState | undefined>();
+  const [sending, startSending] = useTransition();
+  const posterUrl = session?.poster_path ? props.posterUrls[session.poster_path] : undefined;
 
   return (
     <div className="flex flex-col gap-3">
@@ -165,16 +170,40 @@ function WhatsAppComposer(props: Parameters<typeof ContactPanel>[0]) {
       <Field label="Message (you can edit before sending)" htmlFor="wa-text">
         <Textarea id="wa-text" rows={10} value={text} onChange={(e) => setEdited({ base: generated, text: e.target.value })} />
       </Field>
+      {posterUrl ? (
+        <div className="flex items-center gap-3 text-xs text-ink-muted">
+          {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL */}
+          <img src={posterUrl} alt="Program poster" className="h-20 w-auto rounded border border-line object-contain" />
+          <span>This poster goes with the message when you use Send from Setu number.</span>
+        </div>
+      ) : null}
+      <FormMessage state={sent} />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-ink-muted">WhatsApp opens with this message. Nothing is sent until you press send there.</p>
-        <a
-          href={whatsAppUrl(props.whatsapp, text)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex min-h-11 items-center rounded-lg bg-whatsapp px-4 text-sm font-medium text-white hover:bg-whatsapp-hover"
-        >
-          Open WhatsApp
-        </a>
+        <p className="text-xs text-ink-muted">
+          Open WhatsApp: your own WhatsApp, text only. Send from Setu number: sent right away by the organisation number, with the program&apos;s
+          poster.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            className="min-h-11"
+            disabled={sending || !text.trim()}
+            onClick={() => {
+              if (confirm('Send this message now from the Setu WhatsApp number?'))
+                startSending(async () => setSent(await sendFromSetu(props.leadId, text, session?.id ?? null)));
+            }}
+          >
+            {sending ? 'Sending…' : 'Send from Setu number'}
+          </Button>
+          <a
+            href={whatsAppUrl(props.whatsapp, text)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 items-center rounded-lg bg-whatsapp px-4 text-sm font-medium text-white hover:bg-whatsapp-hover"
+          >
+            Open WhatsApp
+          </a>
+        </div>
       </div>
     </div>
   );

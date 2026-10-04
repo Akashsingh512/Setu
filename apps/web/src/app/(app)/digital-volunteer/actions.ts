@@ -1,9 +1,10 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { DV_PERMISSIONS, DV_TEMPLATE_KINDS, unknownDvPlaceholders } from '@crm/shared';
+import { DV_PERMISSIONS, DV_TEMPLATE_KINDS, unknownDvPlaceholders, type DvTemplateKind } from '@crm/shared';
 import type { ActionState } from '@/components/form';
 import { friendlyError } from '@/lib/errors';
+import { POSTER_PATH } from '@/lib/posters';
 import { createClient } from '@/lib/supabase/server';
 
 // Every action below is authorised again in the database (private.dv_can);
@@ -110,6 +111,15 @@ export async function saveTemplate(kind: string, body: string | null): Promise<A
   if (error) return { error: friendlyError(error) };
   revalidatePath('/digital-volunteer/responses');
   return { ok: true, message: body ? 'Saved.' : 'Reset to the default.' };
+}
+
+export async function setTemplatePoster(kind: DvTemplateKind, path: string | null): Promise<ActionState> {
+  if (path && !POSTER_PATH.test(path)) return { error: 'The poster could not be saved. Choose it again.' };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('dv_set_template_poster', { p_kind: kind, p_poster_path: path });
+  if (error) return { error: friendlyError(error) };
+  revalidatePath('/digital-volunteer/responses');
+  return { ok: true, message: path ? 'Poster saved.' : 'Poster removed.' };
 }
 
 export async function approveSuggestion(id: string, body: string | null): Promise<ActionState> {

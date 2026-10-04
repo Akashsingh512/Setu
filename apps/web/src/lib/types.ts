@@ -158,6 +158,7 @@ export interface CourseSession {
   status: SessionStatus;
   instructions: string | null;
   team_id: string | null;
+  poster_path: string | null;
 }
 
 export interface UpcomingSession extends CourseSession {

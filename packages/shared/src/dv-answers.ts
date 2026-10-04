@@ -265,6 +265,8 @@ export interface CourseAnswer {
   kind: DvTemplateKind;
   body: string;
   courseIds: string[];
+  /** The one program a "course_details" answer is about (its poster can go with it). */
+  sessionId?: string;
 }
 
 /**
@@ -275,7 +277,7 @@ export function buildCourseAnswer(opts: {
   text: string;
   courses: AnswerCourse[];
   sessions: AnswerSession[];
-  templates?: Partial<Record<DvTemplateKind, string>>;
+  templates?: Partial<Record<DvTemplateKind, string | null>>;
   now?: Date;
   timeZone?: string;
   /** Courses chosen by AI classification, used when the text names none. */
@@ -299,6 +301,7 @@ export function buildCourseAnswer(opts: {
     kind: 'course_details',
     body: renderTemplate(tpl('course_details'), sessionVars(s, byId.get(s.course_id), tz)),
     courseIds: [s.course_id],
+    sessionId: s.id,
   });
   const list = (sessions: AnswerSession[]): CourseAnswer => {
     const lines = sessions.slice(0, 6).map((s) => {

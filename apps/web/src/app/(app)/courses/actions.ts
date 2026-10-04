@@ -5,6 +5,7 @@ import type { ActionState } from '@/components/form';
 import { getOrgSettings } from '@/lib/auth';
 import { friendlyError } from '@/lib/errors';
 import { localInputToIso } from '@/lib/format';
+import { POSTER_PATH } from '@/lib/posters';
 import { createClient } from '@/lib/supabase/server';
 
 function firstErrors(issues: { path: PropertyKey[]; message: string }[]) {
@@ -45,6 +46,8 @@ export async function saveSession(sessionId: string | null, _: ActionState | und
     team_id: raw.team_id || null,
   });
   if (!parsed.success) return { error: 'Please fix the highlighted fields.', fieldErrors: firstErrors(parsed.error.issues) };
+  const poster = raw.poster_path || null;
+  if (poster && !POSTER_PATH.test(poster)) return { error: 'The poster could not be saved. Choose it again.' };
 
   // Fields hidden by the chosen format are cleared, not left stale.
   const data = {
@@ -52,6 +55,7 @@ export async function saveSession(sessionId: string | null, _: ActionState | und
     venue: parsed.data.mode === 'online' ? null : parsed.data.venue,
     city: parsed.data.mode === 'online' ? null : parsed.data.city,
     meeting_url: parsed.data.mode === 'in_person' ? null : parsed.data.meeting_url,
+    poster_path: poster,
   };
   const supabase = await createClient();
   const { data: saved, error } = sessionId

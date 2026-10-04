@@ -3,6 +3,7 @@ import { formatSessionSchedule, isStaff, SESSION_MODE_LABELS } from '@crm/shared
 import { Badge, Card, EmptyState, Input, PageHeader, Select } from '@/components/ui';
 import { getOrgSettings, requireProfile } from '@/lib/auth';
 import { getCourses, getTeams } from '@/lib/data';
+import { signPosters } from '@/lib/posters';
 import { createClient } from '@/lib/supabase/server';
 import type { UpcomingSession } from '@/lib/types';
 import { CancelSessionButton, CompleteSessionButton, SessionForm } from './session-form';
@@ -23,6 +24,7 @@ export default async function UpcomingPage({ searchParams }: { searchParams: Pro
     const needle = sp.q.toLowerCase();
     sessions = sessions.filter((s) => s.display_title.toLowerCase().includes(needle) || s.course_name.toLowerCase().includes(needle) || (s.city ?? '').toLowerCase().includes(needle));
   }
+  const posters = await signPosters(supabase, sessions.map((s) => s.poster_path));
   const categories = [...new Set(courses.map((c) => c.category).filter(Boolean))] as string[];
 
   return (
@@ -70,6 +72,12 @@ export default async function UpcomingPage({ searchParams }: { searchParams: Pro
             return (
               <li key={s.id}>
                 <Card className="flex h-full flex-col gap-2 p-5">
+                  {s.poster_path && posters[s.poster_path] ? (
+                    <a href={posters[s.poster_path]} target="_blank" rel="noopener noreferrer" className="-mx-1 mb-1">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL */}
+                      <img src={posters[s.poster_path]} alt={`Poster: ${s.display_title}`} className="max-h-56 w-full rounded-lg bg-canvas object-contain" />
+                    </a>
+                  ) : null}
                   <div className="flex items-start justify-between gap-2">
                     <h2 className="font-semibold">{s.display_title}</h2>
                     <div className="flex gap-1">
@@ -99,6 +107,7 @@ export default async function UpcomingPage({ searchParams }: { searchParams: Pro
                       <span className="ml-auto flex gap-4">
                         <SessionForm
                           session={s}
+                          posterUrl={s.poster_path ? (posters[s.poster_path] ?? null) : null}
                           courses={courses}
                           teams={teams}
                           lockedTeamId={profile.role === 'teacher' ? profile.team_id : null}

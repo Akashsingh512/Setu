@@ -2,6 +2,7 @@
 import { useActionState, useState, useTransition } from 'react';
 import { SESSION_MODE_LABELS, SESSION_MODES } from '@crm/shared';
 import { FormMessage, SubmitButton, type ActionState } from '@/components/form';
+import { PosterInput } from '@/components/poster-input';
 import { Button, Card, Field, Input, Select, Textarea } from '@/components/ui';
 import { toLocalInputValue } from '@/lib/format';
 import type { Course, CourseSession, Team } from '@/lib/types';
@@ -14,12 +15,15 @@ export function SessionForm({
   lockedTeamId,
   defaultTimeZone,
   session,
+  posterUrl = null,
 }: {
   courses: Course[];
   teams: Team[];
   lockedTeamId: string | null;
   defaultTimeZone: string;
   session?: CourseSession;
+  /** Signed URL of the session's poster, for the preview. */
+  posterUrl?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [state, action] = useActionState(async (prev: ActionState | undefined, formData: FormData) => {
@@ -144,6 +148,14 @@ export function SessionForm({
       )}
       <Field label="Additional instructions" htmlFor={`s-instr-${key}`} className="sm:col-span-2">
         <Textarea id={`s-instr-${key}`} name="instructions" defaultValue={session?.instructions ?? ''} />
+      </Field>
+      <Field
+        label="Poster (optional)"
+        htmlFor={`s-poster-${key}`}
+        hint="JPG, PNG or WebP, up to 5 MB. Sent with the bot's reply about this program and from a lead's page (Send from Setu number)."
+        className="sm:col-span-2"
+      >
+        <PosterInput id={`s-poster-${key}`} folder="programs" name="poster_path" currentPath={session?.poster_path ?? null} currentUrl={posterUrl} />
       </Field>
       <input type="hidden" name="timezone" value={tz} />
       <div className="flex justify-end gap-2 sm:col-span-2">
