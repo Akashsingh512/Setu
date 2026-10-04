@@ -4,13 +4,16 @@ import { useState, useTransition } from 'react';
 import { FormMessage, type ActionState } from '@/components/form';
 import { Button, Field, Input, Select, Textarea } from '@/components/ui';
 import { createClient } from '@/lib/supabase/client';
-import { approveAnnouncement, cancelAnnouncement, createAnnouncement, rejectAnnouncement } from '../announcement-actions';
+import { approveAnnouncement, cancelAnnouncement, cancelAnnouncementSend, createAnnouncement, rejectAnnouncement } from '../announcement-actions';
 
 export type GroupOption = { id: string; name: string; media: boolean };
 
-// 0 = send once; otherwise days between sends.
+// 0 = send once; -1 = times chosen one by one; otherwise days between sends.
+const CUSTOM = -1;
+const MAX_TIMES = 30;
 const REPEAT_OPTIONS: { value: number; label: string }[] = [
   { value: 0, label: 'Send once' },
+  { value: CUSTOM, label: 'Choose each time' },
   { value: 1, label: 'Every day' },
   { value: 2, label: 'Every 2 days' },
   { value: 3, label: 'Every 3 days' },
@@ -29,6 +32,14 @@ function previewDate(local: string, addDays: number): string {
     hour: 'numeric',
     minute: '2-digit',
   }).format(d);
+}
+
+/** The same time of day, one day later (datetime-local values in org time). */
+function nextDay(local: string): string {
+  const m = local.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return local;
+  const d = new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]! + 1, +m[4]!, +m[5]!));
+  return d.toISOString().slice(0, 16);
 }
 
 const MAX_POSTER_BYTES = 5 * 1024 * 1024;
@@ -60,8 +71,19 @@ export function NewAnnouncement({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [every, setEvery] = useState(0);
   const [times, setTimes] = useState(5);
-  const sendCount = every ? times : 1;
+  const [customTimes, setCustomTimes] = useState<string[]>([defaultSendAt]);
+  const custom = every === CUSTOM;
+  const sendCount = custom ? customTimes.length : every ? times : 1;
   const tooLong = every > 0 && (times - 1) * every > 89;
+  // datetime-local values sort correctly as text.
+  const sortedTimes = [...customTimes].filter(Boolean).sort();
+  const customProblem = !custom
+    ? null
+    : customTimes.some((t) => !t)
+      ? 'Fill in every time, or remove the empty one.'
+      : new Set(customTimes).size !== customTimes.length
+        ? 'Two of the times are the same.'
+        : null;
   const [formKey, setFormKey] = useState(0);
 
   const blocked = poster ? groups.filter((g) => picked.has(g.id) && !g.media) : [];
@@ -100,7 +122,8 @@ export function NewAnnouncement({
         sendAt,
         groupIds: [...picked],
         repeatCount: sendCount,
-        repeatEveryDays: every || 1,
+        repeatEveryDays: every > 0 ? every : 1,
+        sendTimes: custom ? customTimes : undefined,
       });
       setState(r);
       if (r.ok) {
@@ -110,6 +133,7 @@ export function NewAnnouncement({
         setPicked(new Set());
         setEvery(0);
         setTimes(5);
+        setCustomTimes([defaultSendAt]);
         setFormKey((k) => k + 1);
         router.refresh();
       }
@@ -127,12 +151,24 @@ export function NewAnnouncement({
       <Field label="Poster (optional)" htmlFor="ann-poster" hint="JPG, PNG or WebP, up to 5 MB. Only groups that allow media can receive it.">
         <Input id="ann-poster" type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setPoster(e.target.files?.[0] ?? null)} />
       </Field>
-      <Field label={every ? 'First send at' : 'Send at'} htmlFor="ann-at">
-        <Input id="ann-at" type="datetime-local" value={sendAt} onChange={(e) => setSendAt(e.target.value)} className="max-w-xs" />
-      </Field>
+      {custom ? null : (
+        <Field label={every ? 'First send at' : 'Send at'} htmlFor="ann-at">
+          <Input id="ann-at" type="datetime-local" value={sendAt} onChange={(e) => setSendAt(e.target.value)} className="max-w-xs" />
+        </Field>
+      )}
       <div className="flex flex-wrap gap-3">
         <Field label="Repeat" htmlFor="ann-repeat">
-          <Select id="ann-repeat" value={every} onChange={(e) => setEvery(Number(e.target.value))} className="w-44">
+          <Select
+            id="ann-repeat"
+            value={every}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              // Start the list from the time already picked.
+              if (v === CUSTOM && every !== CUSTOM) setCustomTimes([sendAt || defaultSendAt]);
+              setEvery(v);
+            }}
+            className="w-48"
+          >
             {REPEAT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
@@ -140,7 +176,7 @@ export function NewAnnouncement({
             ))}
           </Select>
         </Field>
-        {every ? (
+        {every > 0 ? (
           <Field label="How many times" htmlFor="ann-times">
             <Input
               id="ann-times"
@@ -154,7 +190,52 @@ export function NewAnnouncement({
           </Field>
         ) : null}
       </div>
-      {every && sendAt ? (
+      {custom ? (
+        <fieldset className="space-y-2">
+          <legend className="mb-1.5 font-medium">Send times</legend>
+          <ol className="space-y-2">
+            {customTimes.map((t, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <span className="w-6 text-right text-ink-muted">{i + 1}.</span>
+                <label htmlFor={`ann-time-${i}`} className="sr-only">
+                  Send time {i + 1}
+                </label>
+                <Input
+                  id={`ann-time-${i}`}
+                  type="datetime-local"
+                  value={t}
+                  onChange={(e) => setCustomTimes((list) => list.map((x, j) => (j === i ? e.target.value : x)))}
+                  className="max-w-xs"
+                />
+                {customTimes.length > 1 ? (
+                  <Button
+                    variant="ghost"
+                    aria-label={`Remove send time ${i + 1}`}
+                    onClick={() => setCustomTimes((list) => list.filter((_, j) => j !== i))}
+                    className="px-2"
+                  >
+                    ✕
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+          {customTimes.length < MAX_TIMES ? (
+            <Button
+              variant="secondary"
+              // Suggests the same time of day, one day after the latest time.
+              onClick={() => setCustomTimes((list) => [...list, nextDay([...list].filter(Boolean).sort().at(-1) ?? defaultSendAt)])}
+            >
+              + Add a time
+            </Button>
+          ) : null}
+          <p className={customProblem ? 'text-danger' : 'text-ink-muted'}>
+            {customProblem ??
+              `Sends ${sortedTimes.length} time${sortedTimes.length === 1 ? '' : 's'}: ${sortedTimes.map((t) => previewDate(t, 0)).join(', ')}. One approval covers all of them. Up to ${MAX_TIMES} times, within 90 days.`}
+          </p>
+        </fieldset>
+      ) : null}
+      {every > 0 && sendAt ? (
         <p className={tooLong ? 'text-danger' : 'text-ink-muted'}>
           {tooLong
             ? 'The last send must be within 90 days. Send it fewer times or closer together.'
@@ -185,7 +266,7 @@ export function NewAnnouncement({
         ) : null}
       </fieldset>
       <div className="flex flex-wrap items-center gap-3">
-        <Button disabled={pending || tooLong || !title.trim() || !picked.size || blocked.length > 0 || (!body.trim() && !poster)} onClick={submit}>
+        <Button disabled={pending || tooLong || !!customProblem || !title.trim() || !picked.size || blocked.length > 0 || (!body.trim() && !poster)} onClick={submit}>
           {pending ? 'Saving…' : 'Submit for approval'}
         </Button>
         <FormMessage state={state} />
@@ -194,7 +275,17 @@ export function NewAnnouncement({
   );
 }
 
-export function AnnouncementActions({ id, canApprove, canCancel }: { id: string; canApprove: boolean; canCancel: boolean }) {
+export function AnnouncementActions({
+  id,
+  canApprove,
+  canCancel,
+  cancelLabel = 'Cancel',
+}: {
+  id: string;
+  canApprove: boolean;
+  canCancel: boolean;
+  cancelLabel?: string;
+}) {
   const [pending, start] = useTransition();
   const [state, setState] = useState<ActionState | undefined>();
   const [declining, setDeclining] = useState(false);
@@ -218,10 +309,10 @@ export function AnnouncementActions({ id, canApprove, canCancel }: { id: string;
             variant="danger"
             disabled={pending}
             onClick={() => {
-              if (confirm('Cancel this announcement? Groups that already received it keep it.')) run(() => cancelAnnouncement(id));
+              if (confirm('Cancel everything not sent yet? Groups that already received it keep it.')) run(() => cancelAnnouncement(id));
             }}
           >
-            Cancel
+            {cancelLabel}
           </Button>
         ) : null}
       </div>
@@ -245,5 +336,30 @@ export function AnnouncementActions({ id, canApprove, canCancel }: { id: string;
       ) : null}
       <FormMessage state={state} />
     </div>
+  );
+}
+
+/** Cancel one scheduled send of an announcement (every group gets it at that time). */
+export function CancelSendButton({ id, sendAfter, label }: { id: string; sendAfter: string; label: string }) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        disabled={pending}
+        className="text-danger underline disabled:opacity-50"
+        onClick={() => {
+          if (confirm(`Cancel the send on ${label}? The other times still go out.`))
+            start(async () => {
+              const r = await cancelAnnouncementSend(id, sendAfter);
+              setError(r.error ?? null);
+            });
+        }}
+      >
+        Cancel this one
+      </button>
+      {error ? <span className="text-danger">{error}</span> : null}
+    </>
   );
 }

@@ -22,6 +22,8 @@ const createSchema = z.object({
   groupIds: z.array(uuid).min(1, 'Choose at least one group.'),
   repeatCount: z.number().int().min(1).max(30, 'Up to 30 times.'),
   repeatEveryDays: z.number().int().min(1).max(30),
+  /** Exact send times (datetime-local values), instead of repeating every N days. */
+  sendTimes: z.array(z.string()).min(1, 'Add at least one send time.').max(30, 'Up to 30 send times.').optional(),
 });
 
 export async function createAnnouncement(input: z.input<typeof createSchema>): Promise<ActionState> {
@@ -30,11 +32,13 @@ export async function createAnnouncement(input: z.input<typeof createSchema>): P
     return {
       error: parsed.error.issues[0]?.message ?? 'Some details are not valid.',
     };
-  const { title, body, posterPath, sendAt, groupIds, repeatCount, repeatEveryDays } = parsed.data;
+  const { title, body, posterPath, sendAt, groupIds, repeatCount, repeatEveryDays, sendTimes } = parsed.data;
   if (!body.trim() && !posterPath) return { error: 'Write a message or add a poster.' };
   const settings = await getOrgSettings();
   const iso = localInputToIso(sendAt, settings.default_timezone);
   if (!iso) return { error: 'Choose when to send it.' };
+  const times = sendTimes?.map((t) => localInputToIso(t, settings.default_timezone));
+  if (times?.some((t) => !t)) return { error: 'Fill in every send time, or remove the empty one.' };
   const supabase = await createClient();
   const { error } = await supabase.rpc('dv_create_announcement', {
     p_title: title,
@@ -44,6 +48,7 @@ export async function createAnnouncement(input: z.input<typeof createSchema>): P
     p_group_ids: groupIds,
     p_repeat_count: repeatCount,
     p_repeat_every_days: repeatEveryDays,
+    p_send_times: times ?? null,
   });
   if (error) return { error: friendlyError(error) };
   revalidatePath('/digital-volunteer/announcements');
@@ -89,4 +94,14 @@ export async function cancelAnnouncement(id: string): Promise<ActionState> {
     ok: true,
     message: data ? `Cancelled. ${data} group message(s) stopped.` : 'Cancelled.',
   };
+}
+
+/** Cancel one send time of an announcement (in every group). */
+export async function cancelAnnouncementSend(id: string, sendAfter: string): Promise<ActionState> {
+  if (!uuid.safeParse(id).success || Number.isNaN(Date.parse(sendAfter))) return { error: 'Invalid send.' };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('dv_cancel_announcement_send', { p_id: id, p_send_after: sendAfter });
+  if (error) return { error: friendlyError(error) };
+  revalidatePath('/digital-volunteer/announcements');
+  return { ok: true, message: 'That send is cancelled.' };
 }

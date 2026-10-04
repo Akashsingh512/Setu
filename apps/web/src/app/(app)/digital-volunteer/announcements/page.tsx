@@ -6,7 +6,7 @@ import { requireDv } from '@/lib/dv';
 import { formatDateTime, relativeTime, toLocalInputValue } from '@/lib/format';
 import { createClient } from '@/lib/supabase/server';
 import { introTalkMessage, type IntroTalk } from '../intro-talks/message';
-import { AnnouncementActions, NewAnnouncement, type GroupOption } from './controls';
+import { AnnouncementActions, CancelSendButton, NewAnnouncement, type GroupOption } from './controls';
 
 export const metadata: Metadata = { title: 'Announcements' };
 
@@ -22,6 +22,7 @@ type Announcement = {
   reason: string | null;
   repeat_count: number;
   repeat_every_days: number;
+  send_times: string[] | null;
 };
 type Target = { announcement_id: string; group_id: string };
 type OutboxRow = {
@@ -35,7 +36,40 @@ type OutboxRow = {
 const repeatLabel = (a: Announcement) =>
   a.repeat_count <= 1
     ? null
-    : `${a.repeat_every_days === 1 ? 'Every day' : a.repeat_every_days === 7 ? 'Every week' : `Every ${a.repeat_every_days} days`} · ${a.repeat_count} times`;
+    : a.send_times
+      ? `Chosen times · ${a.repeat_count} times`
+      : `${a.repeat_every_days === 1 ? 'Every day' : a.repeat_every_days === 7 ? 'Every week' : `Every ${a.repeat_every_days} days`} · ${a.repeat_count} times`;
+
+type SendState = 'sent' | 'waiting' | 'sending' | 'cancelled' | 'failed' | 'partly';
+const SEND_STATE: Record<SendState, { label: string; tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'info' }> = {
+  sent: { label: 'Sent', tone: 'ok' },
+  waiting: { label: 'Waiting', tone: 'info' },
+  sending: { label: 'Sending', tone: 'info' },
+  cancelled: { label: 'Cancelled', tone: 'neutral' },
+  failed: { label: 'Not sent', tone: 'danger' },
+  partly: { label: 'Some groups not sent', tone: 'warn' },
+};
+
+/** One entry per send time (each time goes to every group), oldest first. */
+function scheduleOf(sends: OutboxRow[]): { at: string; state: SendState; error: string | null }[] {
+  const byTime = new Map<string, OutboxRow[]>();
+  for (const o of sends) byTime.set(o.send_after, [...(byTime.get(o.send_after) ?? []), o]);
+  return [...byTime.entries()].map(([at, rows]) => {
+    const has = (st: string) => rows.some((r) => r.status === st);
+    const state: SendState = has('sending')
+      ? 'sending'
+      : has('queued')
+        ? 'waiting'
+        : rows.every((r) => r.status === 'sent')
+          ? 'sent'
+          : rows.every((r) => r.status === 'cancelled' && !r.last_error)
+            ? 'cancelled'
+            : has('sent')
+              ? 'partly'
+              : 'failed';
+    return { at, state, error: rows.find((r) => r.last_error)?.last_error ?? null };
+  });
+}
 
 const STATUS: Record<Announcement['status'], { label: string; tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'info' }> = {
   pending_approval: { label: 'Waiting for approval', tone: 'warn' },
@@ -107,7 +141,8 @@ export default async function AnnouncementsPage({ searchParams }: { searchParams
             const mine = a.created_by === profile.id;
             const open = a.status === 'pending_approval' || a.status === 'scheduled' || a.status === 'sending';
             const sends = sendsOf(a.id);
-            const next = sends.find((o) => o.status === 'queued');
+            const schedule = scheduleOf(sends);
+            const next = schedule.find((t) => t.state === 'waiting');
             const repeat = repeatLabel(a);
             return (
               <Card key={a.id} className="p-5 text-sm">
@@ -125,11 +160,11 @@ export default async function AnnouncementsPage({ searchParams }: { searchParams
                 {repeat ? (
                   <p className="mt-1 text-xs">
                     <span className="font-medium">↻ {repeat}</span>
-                    {sends.length ? (
+                    {schedule.length ? (
                       <span className="text-ink-muted">
                         {' '}
-                        · {Math.round(sends.filter((o) => o.status === 'sent').length / Math.max(1, targetsOf(a.id).length))} of {a.repeat_count} done
-                        {next && open ? ` · next ${formatDateTime(next.send_after, settings.default_timezone)}` : ''}
+                        · {schedule.filter((t) => t.state === 'sent').length} of {schedule.length} sent
+                        {next && open ? ` · next ${formatDateTime(next.at, settings.default_timezone)}` : ''}
                       </span>
                     ) : null}
                   </p>
@@ -163,12 +198,35 @@ export default async function AnnouncementsPage({ searchParams }: { searchParams
                     );
                   })}
                 </ul>
+                {schedule.length > 1 ? (
+                  <details className="mt-3" open={open}>
+                    <summary className="cursor-pointer text-xs font-medium text-ink-muted">Schedule ({schedule.length} sends)</summary>
+                    <ol className="mt-2 divide-y divide-line rounded-lg border border-line">
+                      {schedule.map((t, i) => {
+                        const label = formatDateTime(t.at, settings.default_timezone);
+                        return (
+                          <li key={t.at} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2" title={t.error ?? undefined}>
+                            <span>
+                              <span className="mr-2 text-ink-muted">{i + 1}.</span>
+                              {label}
+                            </span>
+                            <span className="flex items-center gap-3">
+                              <Badge tone={SEND_STATE[t.state].tone}>{SEND_STATE[t.state].label}</Badge>
+                              {t.state === 'waiting' ? <CancelSendButton id={a.id} sendAfter={t.at} label={label} /> : null}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </details>
+                ) : null}
                 {a.reason ? <p className="mt-2 text-ink-muted">Reason: {a.reason}</p> : null}
                 {open ? (
                   <AnnouncementActions
                     id={a.id}
                     canApprove={a.status === 'pending_approval' && (!mine || access.isSuperAdmin)}
                     canCancel={a.status !== 'pending_approval' || mine}
+                    cancelLabel={schedule.length > 1 ? 'Cancel all remaining' : 'Cancel'}
                   />
                 ) : null}
               </Card>

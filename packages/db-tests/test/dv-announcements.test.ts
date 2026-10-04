@@ -193,3 +193,69 @@ describe('repeating announcements', () => {
     expect(await createRepeating(30, 3)).toBeTruthy();
   });
 });
+
+describe('exact send times and cancelling', () => {
+  const createAt = (times: string[]) =>
+    q<{ id: string }>(
+      f.db,
+      f.teacherA,
+      `select public.dv_create_announcement('Talk reminder', 'See you there', null, null, $1, 1, 1,
+         (select array_agg(now() + x::interval) from unnest($2::text[]) x)) as id`,
+      [[g1], times],
+    ).then((r) => r[0]!.id);
+  const approve = (id: string) => q(f.db, f.teacherB, `select public.dv_approve_announcement($1)`, [id]);
+  const queuedTimes = (id: string) =>
+    sq<{ h: number }>(
+      f.db,
+      `select round(extract(epoch from send_after - now()) / 3600)::int as h from public.wa_outbox where announcement_id = $1 and status = 'queued' order by send_after`,
+      [id],
+    ).then((r) => r.map((x) => x.h));
+
+  it('sends at exactly the chosen times, sorted, duplicates removed', async () => {
+    const id = await createAt(['26 hours', '2 hours', '50 hours', '2 hours']);
+    await approve(id);
+    expect(await queuedTimes(id)).toEqual([2, 26, 50]);
+    const [a] = await sq<{ repeat_count: number }>(f.db, `select repeat_count from public.dv_announcements where id = $1`, [id]);
+    expect(a!.repeat_count).toBe(3);
+  });
+
+  it('rejects past, too-far and too-many times', async () => {
+    await expect(createAt(['-2 hours'])).rejects.toThrow(/in the future/);
+    await expect(createAt(['100 days'])).rejects.toThrow(/within 90 days/);
+    await expect(createAt(Array.from({ length: 31 }, (_, i) => `${i + 1} hours`))).rejects.toThrow(/between 1 and 30/);
+  });
+
+  it('one send can be cancelled; the rest still go', async () => {
+    const id = await createAt(['2 hours', '26 hours']);
+    await approve(id);
+    const [{ t }] = (await sq<{ t: string }>(
+      f.db,
+      `select max(send_after)::text as t from public.wa_outbox where announcement_id = $1`,
+      [id],
+    )) as [{ t: string }];
+    expect((await q<{ n: number }>(f.db, f.teacherA, `select public.dv_cancel_announcement_send($1, $2) as n`, [id, t]))[0]!.n).toBe(1);
+    expect(await queuedTimes(id)).toEqual([2]);
+    await expect(q(f.db, f.teacherA, `select public.dv_cancel_announcement_send($1, $2)`, [id, t])).rejects.toThrow(/already/);
+    // The first still goes; with the other cancelled by a person, the result is "sent".
+    await due(id);
+    const [row] = await claim();
+    await complete(row!.id);
+    expect(await status(id)).toBe('sent');
+  });
+
+  it('cancelling every send makes it cancelled, not failed', async () => {
+    const id = await createAt(['2 hours']);
+    await approve(id);
+    const [{ t }] = (await sq<{ t: string }>(f.db, `select send_after::text as t from public.wa_outbox where announcement_id = $1`, [id])) as [{ t: string }];
+    await q(f.db, f.teacherA, `select public.dv_cancel_announcement_send($1, $2)`, [id, t]);
+    expect(await status(id)).toBe('cancelled');
+  });
+
+  it('the inbox cannot quietly cancel an announcement send', async () => {
+    await q(f.db, f.admin, `select public.dv_set_operator_permissions($1, '{reply_messages,schedule_announcements}')`, [f.teacherA]);
+    const id = await createAt(['2 hours']);
+    await approve(id);
+    const [{ oid }] = (await sq<{ oid: string }>(f.db, `select id as oid from public.wa_outbox where announcement_id = $1`, [id])) as [{ oid: string }];
+    await expect(q(f.db, f.teacherA, `select public.dv_cancel_outbox($1)`, [oid])).rejects.toThrow(/Announcements page/);
+  });
+});

@@ -25,13 +25,25 @@ type Msg = {
   intent: string | null;
 };
 type FollowUpCandidate = { follow_up_id: string; lead_id: string; lead_code: string; due_at: string; note: string | null };
-type Outbox = { id: string; chat_jid: string; body: string | null; status: string; last_error: string | null; created_at: string; quoted_message_id: string | null };
+type Outbox = {
+  id: string;
+  chat_jid: string;
+  body: string | null;
+  status: string;
+  last_error: string | null;
+  created_at: string;
+  quoted_message_id: string | null;
+  send_after: string;
+  announcement_id: string | null;
+};
 
 export default async function InboxPage({ searchParams }: { searchParams: Promise<{ chat?: string }> }) {
   const access = await requireDv('view_messages');
   const { chat } = await searchParams;
   const supabase = await createClient();
   const settings = await getOrgSettings();
+  // eslint-disable-next-line react-hooks/purity -- server component: rendered once per request
+  const now = Date.now();
 
   const showFollowUps = !!chat && !chat.endsWith('@g.us') && access.can('update_followups');
   const [recent, groups, thread, pending, followUps] = await Promise.all([
@@ -41,7 +53,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       ? supabase.from('wa_messages').select('*').eq('chat_jid', chat).order('sent_at', { ascending: false }).limit(150)
       : Promise.resolve({ data: [] as Msg[] }),
     chat
-      ? supabase.from('wa_outbox').select('id, chat_jid, body, status, last_error, created_at, quoted_message_id').eq('chat_jid', chat).in('status', ['queued', 'sending', 'failed', 'pending_approval']).order('created_at')
+      ? supabase.from('wa_outbox').select('id, chat_jid, body, status, last_error, created_at, quoted_message_id, send_after, announcement_id').eq('chat_jid', chat).in('status', ['queued', 'sending', 'failed', 'pending_approval']).order('created_at')
       : Promise.resolve({ data: [] as Outbox[] }),
     showFollowUps ? supabase.rpc('dv_followup_candidates', { p_chat_jid: chat }) : Promise.resolve({ data: [] as FollowUpCandidate[] }),
   ]);
@@ -175,8 +187,21 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                   <p className="whitespace-pre-wrap">{o.body}</p>
                 </div>
                 <p className="mt-0.5 text-xs">
-                  {o.status === 'failed' ? <span className="text-danger">Not sent: {o.last_error}</span> : <span className="text-ink-muted">Sending…</span>}
-                  {access.can('reply_messages') && o.status !== 'sending' ? <CancelOutboxButton id={o.id} /> : null}
+                  {o.status === 'failed' ? (
+                    <span className="text-danger">Not sent: {o.last_error}</span>
+                  ) : o.status === 'queued' && new Date(o.send_after).getTime() > now + 60_000 ? (
+                    <span className="text-ink-muted">Scheduled for {formatDateTime(o.send_after, settings.default_timezone)}</span>
+                  ) : (
+                    <span className="text-ink-muted">Sending…</span>
+                  )}
+                  {o.announcement_id ? (
+                    // Announcement sends are managed (and cancelled) on the Announcements page.
+                    <Link href="/digital-volunteer/announcements" className="ml-2 text-accent underline">
+                      Announcement
+                    </Link>
+                  ) : access.can('reply_messages') && o.status !== 'sending' ? (
+                    <CancelOutboxButton id={o.id} />
+                  ) : null}
                 </p>
               </li>
             ))}
