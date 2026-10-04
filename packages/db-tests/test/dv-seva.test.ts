@@ -491,3 +491,30 @@ describe('delivery and repeats', () => {
     expect(p!.p.reason).toMatch(/1 unassigned lead\(s\) exist, but they are closed/);
   });
 });
+
+describe('requests nobody handled', () => {
+  it('asking again while waiting gets a "still waiting" reply, not silence', async () => {
+    await group(`mode = 'assisted'`);
+    await makeLeads(6);
+    await ask(PHONE[f.volA1]!);
+    await sq(f.db, `delete from public.wa_outbox`);
+    const again = await ask(PHONE[f.volA1]!);
+    expect(again.seva).toMatchObject({ duplicate: true });
+    const out = await outbox();
+    expect(out).toHaveLength(1);
+    expect(out[0]!.body).toContain('is still waiting for a coordinator');
+  });
+
+  it('a request waiting over 24 hours expires quietly when the person asks again', async () => {
+    await group(`mode = 'assisted'`);
+    await makeLeads(6);
+    await ask(PHONE[f.volA1]!);
+    const old = await request();
+    await sq(f.db, `update public.dv_seva_requests set created_at = now() - interval '25 hours' where id = $1`, [old.id]);
+    await sq(f.db, `delete from public.wa_outbox`);
+    await group(`mode = 'automatic'`);
+    expect((await ask(PHONE[f.volA1]!)).seva).toMatchObject({ status: 'fulfilled', assigned: 5 });
+    expect(await request(old.id)).toMatchObject({ status: 'cancelled', reason: 'Expired: not handled within 24 hours' });
+    expect((await outbox()).map((o) => o.kind)).toEqual(['seva_numbers', 'reply']); // only the leads + group note, no "declined"
+  });
+});
