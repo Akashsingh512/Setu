@@ -130,7 +130,7 @@ export function LeadCards({
                       onClick={stop}
                       className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-accent text-sm font-medium text-on-accent hover:bg-accent-hover"
                     >
-                      <span aria-hidden>📞</span> Call
+                      Call
                     </a>
                     <a
                       href={whatsAppHref(l, ctx)}
@@ -139,7 +139,7 @@ export function LeadCards({
                       onClick={stop}
                       className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-whatsapp text-sm font-medium text-white hover:bg-whatsapp-hover"
                     >
-                      <span aria-hidden>💬</span> WhatsApp
+                      WhatsApp
                     </a>
                   </div>
                 )}

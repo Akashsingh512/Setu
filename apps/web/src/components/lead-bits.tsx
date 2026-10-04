@@ -38,7 +38,7 @@ export function CallLink({ phone, className, label = 'Call' }: { phone: string; 
       )}
       aria-label={`Call ${formatPhone(phone)}`}
     >
-      <span aria-hidden>📞</span> {label}
+      {label}
     </a>
   );
 }

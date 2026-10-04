@@ -47,10 +47,10 @@ export function ContactPanel(props: {
           onClick={() => setShowLog(true)}
           className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-5 font-medium text-on-accent hover:bg-accent-hover sm:flex-none"
         >
-          <span aria-hidden>📞</span> Call
+          Call
         </a>
         <Button variant="secondary" className="min-h-12 flex-1 sm:flex-none" onClick={() => setShowWa((v) => !v)} aria-expanded={showWa}>
-          <span aria-hidden>💬</span> WhatsApp
+          WhatsApp
         </Button>
         <Button variant="secondary" className="min-h-12 flex-1 sm:flex-none" onClick={() => setShowLog((v) => !v)} aria-expanded={showLog}>
           Record call outcome
