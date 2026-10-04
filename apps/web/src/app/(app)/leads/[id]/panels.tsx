@@ -11,8 +11,8 @@ import {
 import { FormMessage, SubmitButton, type ActionState } from '@/components/form';
 import { Alert, Button, Card, CardHeader, cn, Field, Input, Select, Textarea } from '@/components/ui';
 import { toLocalInputValue } from '@/lib/format';
-import type { Course, FollowUp, LeadStatus, MessageTemplate, UpcomingSession } from '@/lib/types';
-import { addNote, assignLeads, completeFollowUp, logCall, scheduleFollowUp, sendFromSetu, unassignLeads, updateStatus } from '../actions';
+import type { Course, FollowUp, FollowUpComment, LeadStatus, MessageTemplate, UpcomingSession } from '@/lib/types';
+import { addFollowUpComment, addNote, assignLeads, completeFollowUp, logCall, scheduleFollowUp, sendFromSetu, unassignLeads, updateStatus } from '../actions';
 
 // ---------------------------------------------------------------------------
 // Call + WhatsApp
@@ -260,16 +260,21 @@ export function FollowUpList({
   followUps,
   canAct,
   timeZone,
+  comments,
 }: {
   leadId: string;
   followUps: (FollowUp & { dueLabel: string; relative: string; owner: string | null })[];
   canAct: boolean;
   timeZone: string;
+  comments: (FollowUpComment & { who: string; when: string })[];
 }) {
   const [state, action] = useActionState(scheduleFollowUp.bind(null, leadId), undefined);
   const [pending, start] = useTransition();
   const open = followUps.filter((f) => f.status === 'open');
   const past = followUps.filter((f) => f.status !== 'open').slice(-5);
+  const openIds = new Set(open.map((f) => f.id));
+  // Comments without an open follow-up (none was scheduled, or it is done) are listed below.
+  const loose = comments.filter((c) => !c.follow_up_id || !openIds.has(c.follow_up_id)).slice(-10);
 
   return (
     <Card>
@@ -284,6 +289,8 @@ export function FollowUpList({
                 </p>
                 {f.note ? <p className="text-ink-muted">{f.note}</p> : null}
                 {f.owner ? <p className="text-xs text-ink-muted">Owner: {f.owner}</p> : null}
+                <CommentList comments={comments.filter((c) => c.follow_up_id === f.id)} />
+                {canAct ? <CommentBox leadId={leadId} followUpId={f.id} /> : null}
               </div>
               {canAct ? (
                 <div className="flex gap-1">
@@ -301,6 +308,13 @@ export function FollowUpList({
       ) : (
         <p className="px-5 py-4 text-sm text-ink-muted">No open follow-ups.</p>
       )}
+      {loose.length || (canAct && !open.length) ? (
+        <div className="border-t border-line px-5 py-3 text-sm">
+          <p className="text-xs font-medium text-ink-muted">Comments</p>
+          <CommentList comments={loose} />
+          {canAct && !open.length ? <CommentBox leadId={leadId} followUpId={null} /> : null}
+        </div>
+      ) : null}
       {past.length ? (
         <p className="border-t border-line px-5 py-2 text-xs text-ink-muted">
           {past.length} completed or cancelled recently
@@ -315,6 +329,48 @@ export function FollowUpList({
         </form>
       ) : null}
     </Card>
+  );
+}
+
+function CommentList({ comments }: { comments: (FollowUpComment & { who: string; when: string })[] }) {
+  if (!comments.length) return null;
+  return (
+    <ul className="mt-2 flex flex-col gap-1.5 border-l-2 border-line pl-3">
+      {comments.map((c) => (
+        <li key={c.id}>
+          <p className="text-xs text-ink-muted">
+            {c.who} · {c.when}
+            {c.source === 'whatsapp' ? ' · WhatsApp' : ''}
+          </p>
+          <p className="whitespace-pre-wrap">{c.body}</p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function CommentBox({ leadId, followUpId }: { leadId: string; followUpId: string | null }) {
+  const [text, setText] = useState('');
+  const [state, setState] = useState<ActionState | undefined>();
+  const [pending, start] = useTransition();
+  return (
+    <form
+      className="mt-2 flex gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        start(async () => {
+          const r = await addFollowUpComment(leadId, followUpId, text);
+          setState(r);
+          if (r.ok) setText('');
+        });
+      }}
+    >
+      <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Add a comment" aria-label="Add a comment" className="min-h-9 text-sm" maxLength={2000} />
+      <Button type="submit" variant="secondary" className="min-h-9 px-3" disabled={pending || !text.trim()}>
+        {pending ? '…' : 'Add'}
+      </Button>
+      {state?.error ? <p className="text-xs text-danger">{state.error}</p> : null}
+    </form>
   );
 }
 

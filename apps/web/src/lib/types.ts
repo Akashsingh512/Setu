@@ -116,6 +116,16 @@ export interface FollowUp {
   completed_at: string | null;
 }
 
+export interface FollowUpComment {
+  id: string;
+  lead_id: string;
+  follow_up_id: string | null;
+  author_id: string | null;
+  body: string;
+  source: 'app' | 'whatsapp';
+  created_at: string;
+}
+
 export interface LeadActivity {
   id: number;
   lead_id: string;

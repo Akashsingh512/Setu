@@ -9,7 +9,7 @@ import { getCourses, getProfileNames, getStatuses, getVisibleProfiles, statusMap
 import { formatDate, formatDateTime, relativeTime } from '@/lib/format';
 import { signPosters } from '@/lib/posters';
 import { createClient } from '@/lib/supabase/server';
-import type { CallAttempt, FollowUp, Lead, LeadActivity, LeadAssignment, LeadNote, MessageTemplate, UpcomingSession } from '@/lib/types';
+import type { CallAttempt, FollowUp, FollowUpComment, Lead, LeadActivity, LeadAssignment, LeadNote, MessageTemplate, UpcomingSession } from '@/lib/types';
 import { AssignBox, ContactPanel, FollowUpList, NoteForm, StatusForm } from './panels';
 
 export const metadata: Metadata = { title: 'Lead' };
@@ -30,6 +30,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   merged_into: 'Merged into another lead',
   whatsapp_received: 'WhatsApp message from the lead',
   whatsapp_sent: 'WhatsApp sent from the Setu number',
+  follow_up_comment: 'Follow-up comment',
 };
 
 export default async function LeadPage({
@@ -64,12 +65,13 @@ export default async function LeadPage({
   const historyIds = [lead.id, ...(merged ?? []).map((m) => m.id as string)];
 
   // Round trip 2: history across the lead and any merged duplicates.
-  const [profiles, assignments, calls, notes, activities] = await Promise.all([
+  const [profiles, assignments, calls, notes, activities, comments] = await Promise.all([
     staff ? getVisibleProfiles() : Promise.resolve([]),
     supabase.from('lead_assignments').select('*').in('lead_id', historyIds).order('assigned_at', { ascending: false }),
     supabase.from('call_attempts').select('*').in('lead_id', historyIds).order('attempted_at', { ascending: false }),
     supabase.from('lead_notes').select('*').in('lead_id', historyIds).order('created_at', { ascending: false }),
     supabase.from('lead_activities').select('*').in('lead_id', historyIds).order('created_at', { ascending: false }).limit(100),
+    supabase.from('follow_up_comments').select('*').in('lead_id', historyIds).order('created_at').limit(200),
   ]);
 
   const upcoming = (sessions.data ?? []) as UpcomingSession[];
@@ -196,6 +198,11 @@ export default async function LeadPage({
                     {a.type === 'call_logged' ? <span className="text-ink-muted"> · {CALL_OUTCOME_LABELS[a.data.outcome as keyof typeof CALL_OUTCOME_LABELS]}</span> : null}
                     {a.type === 'follow_up_completed' && a.data.via === 'whatsapp' ? <span className="text-ink-muted"> · confirmed from WhatsApp</span> : null}
                     <span className="text-ink-muted"> · {name(a.actor_id)}</span>
+                    {a.type === 'follow_up_comment' && a.data.preview ? (
+                      <span className="mt-0.5 block whitespace-pre-wrap text-ink-muted">
+                        {a.data.source === 'whatsapp' ? '[WhatsApp] ' : ''}“{String(a.data.preview)}”
+                      </span>
+                    ) : null}
                     {a.type === 'whatsapp_sent' ? (
                       <span className="mt-0.5 block whitespace-pre-wrap text-ink-muted">
                         {a.data.poster ? '[poster] ' : ''}
@@ -284,6 +291,11 @@ export default async function LeadPage({
               dueLabel: formatDateTime(f.due_at, settings.default_timezone),
               relative: relativeTime(f.due_at),
               owner: f.owner_id ? name(f.owner_id, 'a volunteer') : null,
+            }))}
+            comments={((comments.data ?? []) as FollowUpComment[]).map((c) => ({
+              ...c,
+              who: name(c.author_id, 'Someone'),
+              when: formatDateTime(c.created_at, settings.default_timezone),
             }))}
           />
 

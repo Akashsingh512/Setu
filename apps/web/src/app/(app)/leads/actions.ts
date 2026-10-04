@@ -236,6 +236,16 @@ export async function completeFollowUp(leadId: string, followUpId: string, cance
   return { ok: true };
 }
 
+export async function addFollowUpComment(leadId: string, followUpId: string | null, body: string): Promise<ActionState> {
+  if (!body.trim()) return { error: 'Write a comment.' };
+  if (body.length > 2000) return { error: 'The comment is too long (2000 characters max).' };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('add_follow_up_comment', { p_lead_id: leadId, p_follow_up_id: followUpId, p_body: body });
+  if (error) return { error: friendlyError(error) };
+  revalidatePath(`/leads/${leadId}`);
+  return { ok: true };
+}
+
 export type QuickViewData = {
   followUps: { id: string; due: string; overdue: boolean; note: string | null; status: string; owner: string | null }[];
   history: { id: string; kind: 'note' | 'call' | 'follow_up'; text: string; detail: string | null; who: string; when: string; at: string }[];
