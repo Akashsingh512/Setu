@@ -154,7 +154,11 @@ async function onConnectionUpdate(s: WASocket, update: Partial<ConnectionState>)
       last_error: null,
     });
     log.info({ phone: me?.id }, 'connected');
-    await syncGroups(); // skipped if a full reload ran in the last 10 minutes
+    // A different number than last time (or a fresh link): its groups must load now.
+    const phone = phoneFromJid(me?.id ? jidNormalizedUser(me.id) : null);
+    if (phone !== lastPhone) lastFullSync = 0;
+    lastPhone = phone;
+    void loadGroupsAfterConnect(s);
   }
 
   if (update.connection === 'close') {
@@ -205,6 +209,37 @@ async function onConnectionUpdate(s: WASocket, update: Partial<ConnectionState>)
 const FULL_SYNC_MIN_GAP_MS = 10 * 60_000;
 let lastFullSync = 0;
 let syncBlockedUntil = 0;
+let lastPhone: string | null = null;
+
+/**
+ * Right after linking, WhatsApp is still syncing and the group list can come back
+ * empty. Try again a few times until groups arrive, then fill in missing names.
+ */
+async function loadGroupsAfterConnect(s: WASocket) {
+  const retries = [0, 20_000, 60_000, 3 * 60_000];
+  for (const [i, wait] of retries.entries()) {
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    if (sock !== s || !connected) return; // reconnected or closed meanwhile
+    const r = await syncGroups({ requested: i > 0 });
+    if (r === 'skipped' || (typeof r === 'number' && r > 0)) break; // loaded (now, or in the last 10 minutes)
+  }
+  await fillMissingGroupNames(s);
+}
+
+/** Groups saved without a name (WhatsApp sometimes sends none at first): ask for each one, slowly. */
+async function fillMissingGroupNames(s: WASocket) {
+  const { data } = await db.from('wa_groups').select('jid').eq('is_member', true).or('name.is.null,name.eq.').limit(40);
+  for (const { jid } of (data ?? []) as { jid: string }[]) {
+    if (sock !== s || !connected) return;
+    try {
+      const meta = await s.groupMetadata(jid);
+      if (meta.subject) await upsertGroups([{ id: jid, subject: meta.subject, desc: meta.desc, participants: meta.participants }]);
+    } catch (e) {
+      if (/rate-overlimit/i.test((e as Error).message)) return;
+    }
+    await new Promise((r) => setTimeout(r, 2_000));
+  }
+}
 
 /**
  * Reloads the whole group list. WhatsApp rate-limits this call, so it runs at
@@ -227,10 +262,16 @@ async function syncGroups(opts: { requested?: boolean } = {}): Promise<number | 
   if (!sock || !connected) return 0;
   const now = Date.now();
   if (now < syncBlockedUntil) return `WhatsApp asked us to slow down - try again after ${new Date(syncBlockedUntil).toLocaleTimeString('en-IN')}`;
-  if (!opts.requested && now - lastFullSync < FULL_SYNC_MIN_GAP_MS) return 0;
+  if (!opts.requested && now - lastFullSync < FULL_SYNC_MIN_GAP_MS) return 'skipped';
   lastFullSync = now;
   try {
     const all = await sock.groupFetchAllParticipating();
+    if (!Object.keys(all).length) {
+      // Usually WhatsApp still syncing right after a link. Never treat it as "left every group".
+      lastFullSync = 0;
+      log.warn('group list came back empty - not saved');
+      return 0;
+    }
     const rows = Object.values(all).map((g) => ({
       jid: g.id,
       name: g.subject ?? '',
@@ -262,7 +303,8 @@ async function upsertGroups(list: { id?: string; subject?: string; desc?: string
     .map((g) => ({
       jid: g.id,
       is_member: true,
-      ...(g.subject !== undefined ? { name: g.subject } : {}),
+      // An empty name (common right after linking) must never replace a real one.
+      ...(g.subject ? { name: g.subject } : {}),
       ...(g.desc !== undefined ? { description: g.desc } : {}),
       ...(g.participants ? { participant_count: g.participants.length } : {}),
     }));
@@ -443,6 +485,7 @@ async function runCommands() {
         else {
           // Fresh pairing: never reuse a half-finished or logged-out session.
           await (await usePostgresAuthState(db)).clear();
+          lastFullSync = 0; // a newly linked number must load its groups straight away
           await connect('link');
           result = 'QR code requested';
         }

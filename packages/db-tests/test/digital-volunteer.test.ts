@@ -83,8 +83,9 @@ describe('groups', () => {
 
   it('a group the number left is marked unavailable, keeping its settings', async () => {
     await addGroup();
-    await svc(f.db, `select public.dv_sync_groups('[]')`);
-    expect((await sq<{ is_member: boolean }>(f.db, `select is_member from public.wa_groups`))[0]!.is_member).toBe(false);
+    // The next reload lists another group only (an empty list is ignored: WhatsApp still syncing).
+    await svc(f.db, `select public.dv_sync_groups($1)`, [JSON.stringify([{ jid: '999@g.us', name: 'Other' }])]);
+    expect((await sq<{ is_member: boolean }>(f.db, `select is_member from public.wa_groups where jid <> '999@g.us'`))[0]!.is_member).toBe(false);
   });
 });
 
@@ -161,5 +162,15 @@ describe('messages and outbox', () => {
     await sq(f.db, `update public.wa_outbox set claimed_at = now() - interval '10 minutes'`);
     expect(await svc(f.db, `select * from public.dv_claim_outbox()`)).toEqual([]);
     expect((await sq<{ status: string }>(f.db, `select status from public.wa_outbox`))[0]!.status).toBe('failed');
+  });
+});
+
+describe('group list reload keeps names', () => {
+  it('an empty name or an empty list never wipes what is saved', async () => {
+    const f2 = await createFixture();
+    await svc(f2.db, `select public.dv_sync_groups($1)`, [JSON.stringify([{ jid: '1@g.us', name: 'Satsang', description: 'Weekly' }])]);
+    await svc(f2.db, `select public.dv_sync_groups($1)`, [JSON.stringify([{ jid: '1@g.us', name: '', description: null }])]);
+    await svc(f2.db, `select public.dv_sync_groups('[]'::jsonb)`);
+    expect(await sq(f2.db, `select name, description, is_member from public.wa_groups`)).toEqual([{ name: 'Satsang', description: 'Weekly', is_member: true }]);
   });
 });
