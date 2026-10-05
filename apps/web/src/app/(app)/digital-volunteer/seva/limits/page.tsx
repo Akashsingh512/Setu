@@ -2,18 +2,19 @@ import type { Metadata } from 'next';
 import { Card, CardHeader } from '@/components/ui';
 import { requireDv } from '@/lib/dv';
 import { createClient } from '@/lib/supabase/server';
-import { ApproverToggle, DefaultsForm, VolunteerLimitRow, type LimitRow } from './limit-forms';
+import { ApproverToggle, DefaultsForm, LeadAllotters, VolunteerLimitRow, type AllotterCandidate, type LimitRow } from './limit-forms';
 
 export const metadata: Metadata = { title: 'Seva limits' };
 
 export default async function SevaLimitsPage() {
-  await requireDv('manage_integration');
+  const access = await requireDv('manage_integration');
   const supabase = await createClient();
-  const [{ data: settings }, { data: limits }, { data: cands }, { data: approvers }] = await Promise.all([
+  const [{ data: settings }, { data: limits }, { data: cands }, { data: approvers }, { data: allotters }] = await Promise.all([
     supabase.from('dv_seva_settings').select('*').eq('id', true).maybeSingle(),
     supabase.from('dv_seva_limits').select('*'),
     supabase.rpc('dv_seva_candidates'),
     supabase.rpc('dv_approver_candidates'),
+    access.isSuperAdmin ? supabase.rpc('dv_allotter_candidates') : Promise.resolve({ data: null }),
   ]);
   // eslint-disable-next-line react-hooks/purity -- server component: rendered once per request
   const now = Date.now();
@@ -68,6 +69,19 @@ export default async function SevaLimitsPage() {
           </ul>
         )}
       </Card>
+      {access.isSuperAdmin ? (
+        <Card>
+          <CardHeader
+            title="Allot leads from WhatsApp"
+            description={`These people can write to the Setu number "Allot 5 leads to Srikesh" (a name or a phone number). The leads go to that person's own WhatsApp, saying who allotted them, and their replies with a lead code or name are saved as follow-up comments.`}
+          />
+          {allotters ? (
+            <LeadAllotters people={allotters as AllotterCandidate[]} />
+          ) : (
+            <p className="px-5 py-4 text-sm text-ink-muted">Run the latest database migration to use this.</p>
+          )}
+        </Card>
+      ) : null}
       <Card>
         <CardHeader title="Per volunteer" description="Only fill in what should differ from the defaults. A temporary exception lifts the per-request limit for a few days." />
         {volunteers.length === 0 ? (

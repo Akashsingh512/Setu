@@ -93,6 +93,27 @@ export function parseApprovalReply(text: string | null | undefined): ApprovalRep
   return null;
 }
 
+export interface AllotCommand {
+  /** null = the default number per request. */
+  count: number | null;
+  /** A name or a phone number, as written. */
+  target: string;
+}
+
+/**
+ * "Allot 5 leads to Srikesh", "assign 3 leads to +91 98450 12345", "give leads to Priya".
+ * Whether the sender may allot is decided in the database (dv_allot_by_whatsapp).
+ */
+export function parseAllotCommand(text: string | null | undefined): AllotCommand | null {
+  if (!text) return null;
+  const m = /^\s*(?:please\s+)?(?:allot|allocate|assign|give|send|share)\s+(?:(\d{1,2})\s+)?(?:new\s+)?(?:leads?|numbers?|contacts?)\s+(?:to|for)\s+(.{2,80}?)[\s.!]*$/i.exec(text.trim());
+  if (!m) return null;
+  const count = m[1] ? Number(m[1]) : null;
+  if (count !== null && (count < 1 || count > MAX_SEVA_REQUEST)) return null;
+  const target = m[2]!.trim();
+  return target ? { count, target } : null;
+}
+
 export interface IntentResult {
   intent: DvIntent;
   /** Matched keywords, for the audit trail and tuning. */

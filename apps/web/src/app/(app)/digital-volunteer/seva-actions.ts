@@ -120,6 +120,15 @@ export async function unlinkSender(senderJid: string): Promise<ActionState> {
   return { ok: true, message: 'Forgotten.' };
 }
 
+export async function setLeadAllotter(profileId: string, enabled: boolean): Promise<ActionState> {
+  if (!uuid.safeParse(profileId).success) return { error: 'Invalid person.' };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('dv_set_lead_allotter', { p_profile_id: profileId, p_enabled: enabled });
+  if (error) return { error: friendlyError(error) };
+  revalidatePath('/digital-volunteer/seva/limits');
+  return { ok: true };
+}
+
 export async function setWhatsAppApprover(profileId: string, enabled: boolean): Promise<ActionState> {
   if (!uuid.safeParse(profileId).success) return { error: 'Invalid person.' };
   const supabase = await createClient();

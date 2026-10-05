@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCourseAnswer, detectIntent, extractRequestedCount, matchCourses, matchRule, parseApprovalReply, parseDraftReply, unknownDvPlaceholders, type AnswerCourse, type AnswerSession, type DvRule } from '../src/dv-answers';
+import { buildCourseAnswer, detectIntent, extractRequestedCount, matchCourses, matchRule, parseAllotCommand, parseApprovalReply, parseDraftReply, unknownDvPlaceholders, type AnswerCourse, type AnswerSession, type DvRule } from '../src/dv-answers';
 
 describe('detectIntent', () => {
   it.each([
@@ -196,5 +196,19 @@ describe('approving drafts on WhatsApp', () => {
     expect(parseDraftReply('send 12 later?')).toBeNull();
     expect(parseDraftReply('YES 12')).toBeNull();
     expect(parseDraftReply('please send 12 numbers')).toBeNull();
+  });
+});
+
+describe('parseAllotCommand', () => {
+  it('reads who and how many', () => {
+    expect(parseAllotCommand('Allot 5 leads to Srikesh')).toEqual({ count: 5, target: 'Srikesh' });
+    expect(parseAllotCommand('please assign 3 leads to Priya Sharma.')).toEqual({ count: 3, target: 'Priya Sharma' });
+    expect(parseAllotCommand('give leads to +91 98450 12345')).toEqual({ count: null, target: '+91 98450 12345' });
+    expect(parseAllotCommand('send 2 numbers for Vinod')).toEqual({ count: 2, target: 'Vinod' });
+  });
+  it('ignores everything else', () => {
+    expect(parseAllotCommand('I want to do seva, share numbers')).toBeNull();
+    expect(parseAllotCommand('allot 99 leads to X')).toBeNull();
+    expect(parseAllotCommand('L-000002 called, coming Sunday')).toBeNull();
   });
 });

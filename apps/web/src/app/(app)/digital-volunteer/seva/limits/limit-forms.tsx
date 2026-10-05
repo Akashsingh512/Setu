@@ -1,8 +1,8 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { FormMessage, type ActionState } from '@/components/form';
-import { Badge, Button, Field, Input } from '@/components/ui';
-import { saveSevaLimit, saveSevaSettings, setWhatsAppApprover } from '../../seva-actions';
+import { Badge, Button, Field, Input, Select } from '@/components/ui';
+import { saveSevaLimit, saveSevaSettings, setLeadAllotter, setWhatsAppApprover } from '../../seva-actions';
 
 const toNum = (v: string): number | null => (v.trim() === '' ? null : Number(v));
 const show = (v: number | null) => (v === null ? '' : String(v));
@@ -173,5 +173,63 @@ export function ApproverToggle({ id, name, hasPhone, canApprove, on }: { id: str
         {on ? 'Stop' : 'Send approvals on WhatsApp'}
       </Button>
     </li>
+  );
+}
+
+export type AllotterCandidate = { id: string; full_name: string; role: string; has_phone: boolean; is_allotter: boolean };
+
+/** Super admins: who may allot leads to others by WhatsApp ("Allot 5 leads to Srikesh"). */
+export function LeadAllotters({ people }: { people: AllotterCandidate[] }) {
+  const [pick, setPick] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const current = people.filter((p) => p.is_allotter);
+  const others = people.filter((p) => !p.is_allotter);
+  const set = (id: string, enabled: boolean) =>
+    start(async () => {
+      const r = await setLeadAllotter(id, enabled);
+      setError(r.error ?? null);
+      if (r.ok) setPick('');
+    });
+
+  return (
+    <div className="flex flex-col">
+      {current.length ? (
+        <ul className="divide-y divide-line">
+          {current.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
+              <div>
+                <p className="font-medium">
+                  {p.full_name} <Badge tone="ok">Can allot</Badge>
+                </p>
+                <p className="text-xs text-ink-muted">{p.has_phone ? 'Writes from the phone number saved in Setu' : 'No phone number saved: messages cannot be recognised'}</p>
+              </div>
+              <Button variant="secondary" disabled={pending} onClick={() => set(p.id, false)}>
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="px-5 py-4 text-sm text-ink-muted">Nobody can allot leads by WhatsApp yet.</p>
+      )}
+      <div className="flex flex-wrap items-end gap-2 border-t border-line px-5 py-4">
+        <Field label="Add someone" htmlFor="allotter-pick" className="min-w-64 flex-1">
+          <Select id="allotter-pick" value={pick} onChange={(e) => setPick(e.target.value)}>
+            <option value="">Choose a person…</option>
+            {others.map((p) => (
+              <option key={p.id} value={p.id} disabled={!p.has_phone}>
+                {p.full_name}
+                {p.has_phone ? '' : ' (no phone number)'}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Button disabled={pending || !pick} onClick={() => set(pick, true)}>
+          Add
+        </Button>
+      </div>
+      {error ? <p className="px-5 pb-4 text-sm text-danger">{error}</p> : null}
+    </div>
   );
 }

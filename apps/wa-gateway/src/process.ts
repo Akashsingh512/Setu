@@ -2,7 +2,8 @@
 // build a reply from verified CRM data, and hand both to the database, which
 // decides whether the reply is sent, suggested, or not used (dv_record_intent).
 //
-// Order: an approver's SEND/EDIT/SKIP or YES/NO -> a volunteer's comment on their lead -> reply rules -> built-in keyword
+// Order: an approver's SEND/EDIT/SKIP or YES/NO -> an allotter's "allot N leads to X" ->
+// a volunteer's comment on their lead -> reply rules -> built-in keyword
 // detection -> AI classification for anything still unclear -> AI draft when a
 // real question has no answer in Setu (a draft is never sent without a person).
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -11,6 +12,7 @@ import {
   detectIntent,
   extractRequestedCount,
   matchRule,
+  parseAllotCommand,
   parseApprovalReply,
   parseDraftReply,
   type AnswerCourse,
@@ -139,6 +141,17 @@ export async function processMessage(
     if (error) log.warn({ err: error.message, id: msg.id }, 'approval reply failed');
     else if ((data as { handled?: boolean } | null)?.handled) {
       log.info({ id: msg.id, action: decision.action, ref: decision.ref }, 'seva decision from WhatsApp');
+      return;
+    }
+  }
+
+  // A lead allotter: "Allot 5 leads to Srikesh". The database checks who may.
+  const allot = msg.groupId ? null : parseAllotCommand(text);
+  if (allot) {
+    const { data: res, error } = await db.rpc('dv_allot_by_whatsapp', { p_message_id: msg.id, p_count: allot.count, p_target: allot.target });
+    if (error) log.warn({ err: error.message, id: msg.id }, 'allot command failed');
+    else if ((res as { handled?: boolean } | null)?.handled) {
+      log.info({ id: msg.id, assigned: (res as { assigned?: number }).assigned }, 'leads allotted on WhatsApp');
       return;
     }
   }
