@@ -11,7 +11,7 @@ import { getFeatures } from '@/lib/features';
 import { signPosters } from '@/lib/posters';
 import { createClient } from '@/lib/supabase/server';
 import type { CallAttempt, FollowUp, FollowUpComment, Lead, LeadActivity, LeadAssignment, LeadNote, MessageTemplate, UpcomingSession } from '@/lib/types';
-import { AssignBox, ContactPanel, FollowUpList, NoteForm, StatusForm } from './panels';
+import { AssignBox, ContactPanel, DeleteLeadButtons, FollowUpList, NoteForm, StatusForm } from './panels';
 
 export const metadata: Metadata = { title: 'Lead' };
 
@@ -26,7 +26,8 @@ const ACTIVITY_LABELS: Record<string, string> = {
   follow_up_completed: 'Follow-up done',
   follow_up_cancelled: 'Follow-up cancelled',
   updated: 'Details edited',
-  archived: 'Archived',
+  archived: 'Deleted (moved to Deleted)',
+  restored: 'Restored from Deleted',
   merged: 'Duplicate merged in',
   merged_into: 'Merged into another lead',
   whatsapp_received: 'WhatsApp message from the lead',
@@ -77,7 +78,10 @@ export default async function LeadPage({
   ]);
 
   const upcoming = (sessions.data ?? []) as UpcomingSession[];
-  const posters = await signPosters(supabase, upcoming.map((s) => s.poster_path));
+  const posters = await signPosters(
+    supabase,
+    upcoming.map((s) => s.poster_path),
+  );
   const sMap = statusMap(statuses);
   const status = sMap.get(lead.status);
   const blocked = !!status?.blocks_contact;
@@ -96,19 +100,34 @@ export default async function LeadPage({
       <PageHeader
         title={lead.full_name}
         description={`${lead.lead_code} · added ${formatDate(lead.created_at)}`}
-        actions={staff && features.has('edit_leads') ? <ButtonLink href={`/leads/${lead.id}/edit`} variant="secondary">Edit</ButtonLink> : undefined}
+        actions={
+          staff && features.has('edit_leads') ? (
+            <div className="flex flex-wrap gap-2">
+              {lead.archived_at ? null : (
+                <ButtonLink href={`/leads/${lead.id}/edit`} variant="secondary">
+                  Edit
+                </ButtonLink>
+              )}
+              {lead.merged_into_id ? null : <DeleteLeadButtons leadId={lead.id} deleted={!!lead.archived_at} canPurge={profile.role === 'super_admin'} />}
+            </div>
+          ) : undefined
+        }
       />
       <div className="mb-4 flex flex-wrap gap-1.5">
         <StatusBadge code={lead.status} statuses={sMap} />
         <DeadlineBadge deadline={current?.contact_deadline_at} contacted={!!current?.first_contact_at || !!sMap.get(lead.status)?.is_closed} now={now} />
         {lead.needs_attention ? <Badge tone="danger">Needs attention</Badge> : null}
-        {lead.archived_at ? <Badge>Archived</Badge> : null}
+        {lead.archived_at && !lead.merged_into_id ? <Badge tone="danger">Deleted</Badge> : lead.archived_at ? <Badge>Archived</Badge> : null}
       </div>
 
       {lead.merged_into_id ? (
         <div className="mb-4">
           <Alert tone="info">
-            This lead was merged into <Link className="underline" href={`/leads/${lead.merged_into_id}`}>another lead</Link>.
+            This lead was merged into{' '}
+            <Link className="underline" href={`/leads/${lead.merged_into_id}`}>
+              another lead
+            </Link>
+            .
           </Alert>
         </div>
       ) : null}
@@ -197,8 +216,12 @@ export default async function LeadPage({
                         {sMap.get(String(a.data.from))?.label ?? String(a.data.from)} → {sMap.get(String(a.data.to))?.label ?? String(a.data.to)}
                       </span>
                     ) : null}
-                    {a.type === 'assigned' && a.data.assignee_id ? <span className="text-ink-muted"> to {name(String(a.data.assignee_id), 'a volunteer')}</span> : null}
-                    {a.type === 'call_logged' ? <span className="text-ink-muted"> · {CALL_OUTCOME_LABELS[a.data.outcome as keyof typeof CALL_OUTCOME_LABELS]}</span> : null}
+                    {a.type === 'assigned' && a.data.assignee_id ? (
+                      <span className="text-ink-muted"> to {name(String(a.data.assignee_id), 'a volunteer')}</span>
+                    ) : null}
+                    {a.type === 'call_logged' ? (
+                      <span className="text-ink-muted"> · {CALL_OUTCOME_LABELS[a.data.outcome as keyof typeof CALL_OUTCOME_LABELS]}</span>
+                    ) : null}
                     {a.type === 'follow_up_completed' && a.data.via === 'whatsapp' ? <span className="text-ink-muted"> · confirmed from WhatsApp</span> : null}
                     <span className="text-ink-muted"> · {name(a.actor_id)}</span>
                     {a.type === 'follow_up_comment' && a.data.preview ? (
@@ -322,10 +345,15 @@ export default async function LeadPage({
                   <li key={a.id} className="px-5 py-3">
                     <p className="font-medium">
                       {name(a.assignee_id, 'Another volunteer')}
-                      {!a.ended_at ? <Badge tone="info" className="ml-2">Current</Badge> : null}
+                      {!a.ended_at ? (
+                        <Badge tone="info" className="ml-2">
+                          Current
+                        </Badge>
+                      ) : null}
                     </p>
                     <p className="text-ink-muted">
-                      {formatDateTime(a.assigned_at, settings.default_timezone)} · {a.kind === 'auto_reassign' ? 'auto-reassigned' : a.kind === 'auto_assign' ? 'auto-assigned' : `by ${name(a.assigned_by)}`}
+                      {formatDateTime(a.assigned_at, settings.default_timezone)} ·{' '}
+                      {a.kind === 'auto_reassign' ? 'auto-reassigned' : a.kind === 'auto_assign' ? 'auto-assigned' : `by ${name(a.assigned_by)}`}
                     </p>
                     <p className="text-ink-muted">
                       {a.first_contact_at

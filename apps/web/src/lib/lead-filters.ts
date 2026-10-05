@@ -15,7 +15,7 @@ export interface LeadFilterParams {
   status?: string;
   course?: string;
   assignee?: string; // volunteer id, or "none"
-  view?: string; // attention | awaiting | overdue | followups
+  view?: string; // attention | awaiting | overdue | followups | deleted
   from?: string; // YYYY-MM-DD (created)
   to?: string;
 }
@@ -38,7 +38,10 @@ export function readLeadFilters(params: URLSearchParams | Record<string, string 
 
 /** Strip characters that have meaning in PostgREST filter syntax. */
 function cleanSearch(q: string): string {
-  return q.replace(/[,()*%\\:."']/g, ' ').trim().slice(0, 80);
+  return q
+    .replace(/[,()*%\\:."']/g, ' ')
+    .trim()
+    .slice(0, 80);
 }
 
 /**
@@ -46,7 +49,8 @@ function cleanSearch(q: string): string {
  * assignment (awaiting/overdue) are resolved by the caller into lead ids.
  */
 export function applyLeadFilters<Q extends Filterable<Q>>(query: Q, f: LeadFilterParams): Q {
-  let q = query.is('archived_at', null);
+  // Deleted = archived by a person (merged duplicates are archived too, but not listed).
+  let q = f.view === 'deleted' ? query.not('archived_at', 'is', null).is('merged_into_id', null) : query.is('archived_at', null);
   const search = f.q ? cleanSearch(f.q) : '';
   if (search) {
     const digits = search.replace(/\D/g, '');

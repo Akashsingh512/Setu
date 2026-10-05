@@ -54,10 +54,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     });
     query = query.in('id', ids.length ? ids : [NO_MATCH]);
   }
-  query =
-    filters.view === 'followups'
-      ? query.order('next_follow_up_at', { ascending: true })
-      : query.order('created_at', { ascending: false });
+  query = filters.view === 'followups' ? query.order('next_follow_up_at', { ascending: true }) : query.order('created_at', { ascending: false });
 
   const [{ data, count, error }, [statuses, courses, profiles, names, settings], sessions, templates] = await Promise.all([
     query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1),
@@ -116,7 +113,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   return (
     <>
       <PageHeader
-        title={staff ? 'Leads' : 'My Leads'}
+        title={filters.view === 'deleted' ? 'Deleted leads' : staff ? 'Leads' : 'My Leads'}
         description={staff ? `${count ?? 0} matching lead(s)` : 'Leads currently assigned to you.'}
         actions={
           staff ? (
@@ -129,14 +126,12 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
               {features.has('add_leads') ? <OfflineAddLink /> : null}
               {features.has('add_leads') ? <ButtonLink href="/leads/new">Add lead</ButtonLink> : null}
             </div>
-          ) : (
-            features.has('add_leads') ? (
-              <div className="flex gap-2">
-                <OfflineAddLink />
-                <ButtonLink href="/leads/new">Add a lead I met</ButtonLink>
-              </div>
-            ) : null
-          )
+          ) : features.has('add_leads') ? (
+            <div className="flex gap-2">
+              <OfflineAddLink />
+              <ButtonLink href="/leads/new">Add a lead I met</ButtonLink>
+            </div>
+          ) : null
         }
       />
 
@@ -158,6 +153,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
           <option value="overdue">Overdue (deadline missed)</option>
           <option value="followups">With follow-ups</option>
           {staff ? <option value="attention">Needs attention</option> : null}
+          {staff && features.has('edit_leads') ? <option value="deleted">Deleted</option> : null}
         </Select>
         {staff ? (
           <Select name="assignee" defaultValue={filters.assignee ?? ''} aria-label="Volunteer">
@@ -195,9 +191,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         <Card>
           <EmptyState
             title={staff ? 'No leads match' : 'No leads assigned to you'}
-            description={
-              staff ? 'Try clearing filters, or add a lead.' : 'When a teacher assigns leads to you, or you add someone you met, they appear here.'
-            }
+            description={staff ? 'Try clearing filters, or add a lead.' : 'When a teacher assigns leads to you, or you add someone you met, they appear here.'}
             action={features.has('add_leads') ? <ButtonLink href="/leads/new">{staff ? 'Add lead' : 'Add a lead I met'}</ButtonLink> : undefined}
           />
         </Card>
@@ -219,13 +213,18 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
               last_contact: l.last_contact_at ? relativeTime(l.last_contact_at) : null,
             };
           })}
-          volunteers={volunteers.filter((v) => v.status === 'active').map((v) => ({ id: v.id, name: v.full_name || v.email || 'Volunteer', accepting: v.accepting_leads }))}
+          volunteers={volunteers
+            .filter((v) => v.status === 'active')
+            .map((v) => ({ id: v.id, name: v.full_name || v.email || 'Volunteer', accepting: v.accepting_leads }))}
           totalMatching={count ?? 0}
           filterQuery={qs({ page: undefined }).slice(1)}
           statuses={statuses}
           cards={cards}
           ctx={ctx}
           canAssign={features.has('assign_leads')}
+          canDelete={features.has('edit_leads')}
+          canPurge={profile.role === 'super_admin'}
+          deletedView={filters.view === 'deleted'}
         />
       ) : (
         <LeadCards rows={cards} ctx={ctx} />
@@ -237,8 +236,16 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
             Page {page} of {totalPages}
           </span>
           <div className="flex gap-2">
-            {page > 1 ? <ButtonLink variant="secondary" href={qs({ page: String(page - 1) })}>Previous</ButtonLink> : null}
-            {page < totalPages ? <ButtonLink variant="secondary" href={qs({ page: String(page + 1) })}>Next</ButtonLink> : null}
+            {page > 1 ? (
+              <ButtonLink variant="secondary" href={qs({ page: String(page - 1) })}>
+                Previous
+              </ButtonLink>
+            ) : null}
+            {page < totalPages ? (
+              <ButtonLink variant="secondary" href={qs({ page: String(page + 1) })}>
+                Next
+              </ButtonLink>
+            ) : null}
           </div>
         </nav>
       ) : null}

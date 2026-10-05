@@ -62,9 +62,7 @@ export async function createLead(_: ActionState | undefined, formData: FormData)
 /** Volunteers add a lead they met: their own team, checked again in the database (volunteer_add_lead). */
 export async function volunteerCreateLead(_: ActionState | undefined, formData: FormData): Promise<ActionState> {
   const settings = await getOrgSettings();
-  const parsed = leadInputSchema(settings.default_phone_country)
-    .omit({ team_id: true, met_by_id: true })
-    .safeParse(leadFormValues(formData));
+  const parsed = leadInputSchema(settings.default_phone_country).omit({ team_id: true, met_by_id: true }).safeParse(leadFormValues(formData));
   if (!parsed.success) return { error: 'Please fix the highlighted fields.', fieldErrors: fieldErrors(parsed.error) };
 
   const supabase = await createClient();
@@ -145,12 +143,33 @@ export async function unassignLeads(leadIds: string[]): Promise<ActionState> {
   };
 }
 
-export async function archiveLeads(leadIds: string[], reason?: string): Promise<ActionState> {
+/** Delete = move to the Deleted list (unassigned, follow-ups cancelled, history kept). */
+export async function deleteLeads(leadIds: string[], reason?: string): Promise<ActionState> {
+  if (!leadIds.length) return { error: 'Choose leads first.' };
   const supabase = await createClient();
-  const { error } = await supabase.rpc('archive_leads', { p_lead_ids: leadIds, p_reason: reason ?? null });
+  const { data, error } = await supabase.rpc('archive_leads', { p_lead_ids: leadIds, p_reason: reason ?? null });
   if (error) return { error: friendlyError(error) };
-  revalidatePath('/leads');
-  return { ok: true, message: 'Archived.' };
+  revalidatePath('/leads', 'layout');
+  return { ok: true, message: `Moved ${data ?? leadIds.length} lead(s) to Deleted. You can restore them from the Deleted view.` };
+}
+
+export async function restoreLeads(leadIds: string[]): Promise<ActionState> {
+  if (!leadIds.length) return { error: 'Choose leads first.' };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('restore_leads', { p_lead_ids: leadIds });
+  if (error) return { error: friendlyError(error) };
+  revalidatePath('/leads', 'layout');
+  return { ok: true, message: `Restored ${data ?? 0} lead(s). They are unassigned.` };
+}
+
+/** Super admins: erase leads from the Deleted list for ever. */
+export async function purgeLeads(leadIds: string[]): Promise<ActionState> {
+  if (!leadIds.length) return { error: 'Choose leads first.' };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('purge_leads', { p_lead_ids: leadIds });
+  if (error) return { error: friendlyError(error) };
+  revalidatePath('/leads', 'layout');
+  return { ok: true, message: `Deleted ${data ?? 0} lead(s) for ever.` };
 }
 
 const callSchema = z.object({
@@ -189,7 +208,10 @@ export async function sendFromSetu(leadId: string, body: string, sessionId: stri
   const { data, error } = await supabase.rpc('dv_send_lead_message', { p_lead_id: leadId, p_body: body, p_session_id: sessionId });
   if (error) return { error: friendlyError(error) };
   revalidatePath(`/leads/${leadId}`);
-  return { ok: true, message: (data as { poster?: boolean } | null)?.poster ? 'Sending with the poster from the Setu number.' : 'Sending from the Setu number.' };
+  return {
+    ok: true,
+    message: (data as { poster?: boolean } | null)?.poster ? 'Sending with the poster from the Setu number.' : 'Sending from the Setu number.',
+  };
 }
 
 export async function updateStatus(leadId: string, _: ActionState | undefined, formData: FormData): Promise<ActionState> {

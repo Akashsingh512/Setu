@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useMemo, useState, useTransition } from 'react';
 import { Alert, Badge, Button, Card, Select, Textarea } from '@/components/ui';
 import type { LeadStatus } from '@/lib/types';
-import { assignLeads, idsForFilter, unassignLeads, type AssignResult } from './actions';
+import { assignLeads, deleteLeads, idsForFilter, purgeLeads, restoreLeads, unassignLeads, type AssignResult } from './actions';
 import { LeadCards, type LeadCardData, type MessageContext } from './lead-cards';
 
 export interface LeadRow {
@@ -37,6 +37,9 @@ export function LeadTable({
   cards,
   ctx,
   canAssign = true,
+  canDelete = false,
+  canPurge = false,
+  deletedView = false,
 }: {
   rows: LeadRow[];
   volunteers: { id: string; name: string; accepting: boolean }[];
@@ -47,7 +50,14 @@ export function LeadTable({
   ctx: MessageContext;
   /** Feature access "Assign leads": without it, no selection or bulk actions. */
   canAssign?: boolean;
+  /** Feature access "Edit leads": delete, and restore from the Deleted view. */
+  canDelete?: boolean;
+  /** Super admins: delete for ever (Deleted view only). */
+  canPurge?: boolean;
+  /** Showing the Deleted list. */
+  deletedView?: boolean;
 }) {
+  const canSelect = deletedView ? canDelete || canPurge : canAssign || canDelete;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [allMatching, setAllMatching] = useState(false);
   const [dialog, setDialog] = useState(false);
@@ -97,6 +107,21 @@ export function LeadTable({
     });
   }
 
+  async function chosenIds() {
+    return allMatching ? await idsForFilter(filterQuery) : [...selected];
+  }
+  function run(question: string, action: (ids: string[]) => Promise<AssignResult>) {
+    if (!confirm(question)) return;
+    start(async () => {
+      const r = await action(await chosenIds());
+      setResult(r);
+      if (r.ok) {
+        setSelected(new Set());
+        setAllMatching(false);
+      }
+    });
+  }
+
   const chosen = volunteers.find((v) => v.id === assignee);
 
   return (
@@ -113,9 +138,7 @@ export function LeadTable({
               <>
                 {' '}
                 Skipped {result.skipped.length}:{' '}
-                {Object.entries(
-                  result.skipped.reduce<Record<string, number>>((acc, s) => ({ ...acc, [s.reason]: (acc[s.reason] ?? 0) + 1 }), {}),
-                )
+                {Object.entries(result.skipped.reduce<Record<string, number>>((acc, s) => ({ ...acc, [s.reason]: (acc[s.reason] ?? 0) + 1 }), {}))
                   .map(([reason, n]) => `${n} ${SKIP_REASONS[reason] ?? reason}`)
                   .join(', ')}
                 .
@@ -129,7 +152,7 @@ export function LeadTable({
         </div>
       ) : null}
 
-      {canAssign && (selected.size > 0 || allMatching) ? (
+      {canSelect && (selected.size > 0 || allMatching) ? (
         <div className="sticky top-2 z-10 mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-accent/30 bg-accent-soft px-4 py-3 text-sm">
           <span className="font-medium">{count} selected</span>
           {allOnPage && !allMatching && totalMatching > rows.length ? (
@@ -137,16 +160,58 @@ export function LeadTable({
               Select all {totalMatching} matching
             </button>
           ) : null}
-          <div className="ml-auto flex gap-2">
-            <Button onClick={() => setDialog(true)} disabled={pending}>
-              Assign leads
-            </Button>
-            {!allMatching ? (
-              <Button variant="secondary" onClick={doUnassign} disabled={pending}>
-                Unassign
-              </Button>
-            ) : null}
-            <Button variant="ghost" onClick={() => { setSelected(new Set()); setAllMatching(false); }}>
+          <div className="ml-auto flex flex-wrap gap-2">
+            {deletedView ? (
+              <>
+                {canDelete ? (
+                  <Button onClick={() => run(`Restore ${count} lead(s)? They come back unassigned.`, restoreLeads)} disabled={pending}>
+                    Restore
+                  </Button>
+                ) : null}
+                {canPurge ? (
+                  <Button
+                    variant="danger"
+                    onClick={() =>
+                      run(`Delete ${count} lead(s) FOR EVER? Their calls, notes, follow-ups and history are erased too. This cannot be undone.`, purgeLeads)
+                    }
+                    disabled={pending}
+                  >
+                    Delete forever
+                  </Button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                {canAssign ? (
+                  <Button onClick={() => setDialog(true)} disabled={pending}>
+                    Assign leads
+                  </Button>
+                ) : null}
+                {canAssign && !allMatching ? (
+                  <Button variant="secondary" onClick={doUnassign} disabled={pending}>
+                    Unassign
+                  </Button>
+                ) : null}
+                {canDelete ? (
+                  <Button
+                    variant="danger"
+                    onClick={() =>
+                      run(`Delete ${count} lead(s)? They are unassigned and moved to Deleted, where they can be restored.`, (ids) => deleteLeads(ids))
+                    }
+                    disabled={pending}
+                  >
+                    Delete
+                  </Button>
+                ) : null}
+              </>
+            )}
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setSelected(new Set());
+                setAllMatching(false);
+              }}
+            >
               Clear
             </Button>
           </div>
@@ -155,20 +220,20 @@ export function LeadTable({
 
       {/* Small screens: cards, no sideways scrolling. */}
       <div className="md:hidden">
-        {canAssign ? (
+        {canSelect ? (
           <label className="mb-2 flex items-center gap-2 px-1 text-sm text-ink-muted">
             <input type="checkbox" checked={allOnPage} onChange={togglePage} className="size-5 accent-accent" />
             Select all on this page
           </label>
         ) : null}
-        <LeadCards rows={cards} ctx={ctx} selectable={canAssign} selected={selected} allSelected={allMatching} onToggle={toggle} />
+        <LeadCards rows={cards} ctx={ctx} selectable={canSelect} selected={selected} allSelected={allMatching} onToggle={toggle} />
       </div>
 
       <Card className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[720px] text-sm">
           <thead className="border-b border-line text-left text-ink-muted">
             <tr>
-              {canAssign ? (
+              {canSelect ? (
                 <th className="w-10 px-4 py-3">
                   <input type="checkbox" aria-label="Select all on this page" checked={allOnPage} onChange={togglePage} className="size-4 accent-accent" />
                 </th>
@@ -183,7 +248,7 @@ export function LeadTable({
           <tbody className="divide-y divide-line">
             {rows.map((r) => (
               <tr key={r.id} className={selected.has(r.id) || allMatching ? 'bg-accent-soft/40' : undefined}>
-                {canAssign ? (
+                {canSelect ? (
                   <td className="px-4 py-3">
                     <input
                       type="checkbox"
@@ -219,7 +284,12 @@ export function LeadTable({
       </Card>
 
       {dialog ? (
-        <div className="fixed inset-0 z-30 flex items-end justify-center bg-scrim p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="assign-title">
+        <div
+          className="fixed inset-0 z-30 flex items-end justify-center bg-scrim p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="assign-title"
+        >
           <Card className="w-full max-w-md p-5">
             <h2 id="assign-title" className="text-lg font-semibold">
               Assign {count} lead(s)
@@ -235,9 +305,7 @@ export function LeadTable({
                   </option>
                 ))}
               </Select>
-              {chosen && !chosen.accepting ? (
-                <Alert tone="warn">This volunteer has paused new assignments. You can still assign manually.</Alert>
-              ) : null}
+              {chosen && !chosen.accepting ? <Alert tone="warn">This volunteer has paused new assignments. You can still assign manually.</Alert> : null}
               <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for the volunteer (optional)" maxLength={500} />
               {volunteers.length === 0 ? <Alert tone="warn">There are no active volunteers. Add one on the Volunteers page.</Alert> : null}
             </div>

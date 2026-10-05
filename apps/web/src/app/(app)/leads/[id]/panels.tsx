@@ -1,18 +1,25 @@
 'use client';
 import { useActionState, useEffect, useMemo, useState, useTransition } from 'react';
-import {
-  buildCourseMessage,
-  CALL_OUTCOME_LABELS,
-  CALL_OUTCOMES,
-  chooseMessageCourseId,
-  telUrl,
-  whatsAppUrl,
-} from '@crm/shared';
+import { useRouter } from 'next/navigation';
+import { buildCourseMessage, CALL_OUTCOME_LABELS, CALL_OUTCOMES, chooseMessageCourseId, telUrl, whatsAppUrl } from '@crm/shared';
 import { FormMessage, SubmitButton, type ActionState } from '@/components/form';
 import { Alert, Button, Card, CardHeader, cn, Field, Input, Select, Textarea } from '@/components/ui';
 import { toLocalInputValue } from '@/lib/format';
 import type { Course, FollowUp, FollowUpComment, LeadStatus, MessageTemplate, UpcomingSession } from '@/lib/types';
-import { addFollowUpComment, addNote, assignLeads, completeFollowUp, logCall, scheduleFollowUp, sendFromSetu, unassignLeads, updateStatus } from '../actions';
+import {
+  addFollowUpComment,
+  addNote,
+  assignLeads,
+  completeFollowUp,
+  deleteLeads,
+  purgeLeads,
+  restoreLeads,
+  logCall,
+  scheduleFollowUp,
+  sendFromSetu,
+  unassignLeads,
+  updateStatus,
+} from '../actions';
 
 // ---------------------------------------------------------------------------
 // Call + WhatsApp
@@ -135,8 +142,7 @@ function WhatsAppComposer(props: Parameters<typeof ContactPanel>[0]) {
   const [courseId, setCourseId] = useState(initialCourse);
   const course = props.courses.find((c) => c.id === courseId) ?? null;
   const session = useMemo(() => props.sessions.find((s) => s.course_id === courseId) ?? null, [props.sessions, courseId]);
-  const template =
-    props.templates.find((t) => t.course_id === courseId && t.is_default) ?? props.templates.find((t) => !t.course_id && t.is_default) ?? null;
+  const template = props.templates.find((t) => t.course_id === courseId && t.is_default) ?? props.templates.find((t) => !t.course_id && t.is_default) ?? null;
 
   const generated = useMemo(
     () =>
@@ -159,7 +165,11 @@ function WhatsAppComposer(props: Parameters<typeof ContactPanel>[0]) {
 
   return (
     <div className="flex flex-col gap-3">
-      <Field label="Course to share" htmlFor="wa-course" hint={session ? `Next session included: ${session.display_title}` : course ? 'No upcoming session for this course.' : undefined}>
+      <Field
+        label="Course to share"
+        htmlFor="wa-course"
+        hint={session ? `Next session included: ${session.display_title}` : course ? 'No upcoming session for this course.' : undefined}
+      >
         <Select id="wa-course" value={courseId} onChange={(e) => setCourseId(e.target.value)}>
           <option value="">No specific course</option>
           {props.courses.map((c) => (
@@ -188,17 +198,17 @@ function WhatsAppComposer(props: Parameters<typeof ContactPanel>[0]) {
         </p>
         <div className="flex flex-wrap gap-2">
           {props.canSendFromSetu ? (
-          <Button
-            variant="secondary"
-            className="min-h-11"
-            disabled={sending || !text.trim()}
-            onClick={() => {
-              if (confirm('Send this message now from the Setu WhatsApp number?'))
-                startSending(async () => setSent(await sendFromSetu(props.leadId, text, session?.id ?? null)));
-            }}
-          >
-            {sending ? 'Sending…' : 'Send from Setu number'}
-          </Button>
+            <Button
+              variant="secondary"
+              className="min-h-11"
+              disabled={sending || !text.trim()}
+              onClick={() => {
+                if (confirm('Send this message now from the Setu WhatsApp number?'))
+                  startSending(async () => setSent(await sendFromSetu(props.leadId, text, session?.id ?? null)));
+              }}
+            >
+              {sending ? 'Sending…' : 'Send from Setu number'}
+            </Button>
           ) : null}
           <a
             href={whatsAppUrl(props.whatsapp, text)}
@@ -231,9 +241,7 @@ export function StatusForm({ leadId, current, statuses }: { leadId: string; curr
           </option>
         ))}
       </Select>
-      {target?.blocks_contact && value !== current ? (
-        <Alert tone="warn">Do Not Contact stops all calls, messages and follow-ups for this person.</Alert>
-      ) : null}
+      {target?.blocks_contact && value !== current ? <Alert tone="warn">Do Not Contact stops all calls, messages and follow-ups for this person.</Alert> : null}
       <Input name="note" placeholder="Reason (optional)" />
       <SubmitButton variant="secondary" disabled={value === current}>
         Update status
@@ -299,10 +307,21 @@ export function FollowUpList({
               </div>
               {canAct ? (
                 <div className="flex gap-1">
-                  <Button variant="secondary" className="min-h-9 px-3" disabled={pending} onClick={() => start(async () => void (await completeFollowUp(leadId, f.id)))}>
+                  <Button
+                    variant="secondary"
+                    className="min-h-9 px-3"
+                    disabled={pending}
+                    onClick={() => start(async () => void (await completeFollowUp(leadId, f.id)))}
+                  >
                     Done
                   </Button>
-                  <Button variant="ghost" className="min-h-9 px-2" disabled={pending} aria-label="Cancel follow-up" onClick={() => start(async () => void (await completeFollowUp(leadId, f.id, true)))}>
+                  <Button
+                    variant="ghost"
+                    className="min-h-9 px-2"
+                    disabled={pending}
+                    aria-label="Cancel follow-up"
+                    onClick={() => start(async () => void (await completeFollowUp(leadId, f.id, true)))}
+                  >
                     ✕
                   </Button>
                 </div>
@@ -320,11 +339,7 @@ export function FollowUpList({
           {canAct && !open.length ? <CommentBox leadId={leadId} followUpId={null} /> : null}
         </div>
       ) : null}
-      {past.length ? (
-        <p className="border-t border-line px-5 py-2 text-xs text-ink-muted">
-          {past.length} completed or cancelled recently
-        </p>
-      ) : null}
+      {past.length ? <p className="border-t border-line px-5 py-2 text-xs text-ink-muted">{past.length} completed or cancelled recently</p> : null}
       {canAct ? (
         <form action={action} className="flex flex-col gap-2 border-t border-line p-5">
           <FormMessage state={state} />
@@ -370,12 +385,77 @@ function CommentBox({ leadId, followUpId }: { leadId: string; followUpId: string
         });
       }}
     >
-      <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Add a comment" aria-label="Add a comment" className="min-h-9 text-sm" maxLength={2000} />
+      <Input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Add a comment"
+        aria-label="Add a comment"
+        className="min-h-9 text-sm"
+        maxLength={2000}
+      />
       <Button type="submit" variant="secondary" className="min-h-9 px-3" disabled={pending || !text.trim()}>
         {pending ? '…' : 'Add'}
       </Button>
       {state?.error ? <p className="text-xs text-danger">{state.error}</p> : null}
     </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Delete / restore / delete for ever
+// ---------------------------------------------------------------------------
+export function DeleteLeadButtons({ leadId, deleted, canPurge }: { leadId: string; deleted: boolean; canPurge: boolean }) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  function run(question: string, action: () => Promise<ActionState>, after?: () => void) {
+    if (!confirm(question)) return;
+    start(async () => {
+      const r = await action();
+      if (r.error) setError(r.error);
+      else after?.();
+    });
+  }
+  return (
+    <>
+      {deleted ? (
+        <>
+          <Button variant="secondary" disabled={pending} onClick={() => run('Restore this lead? It comes back unassigned.', () => restoreLeads([leadId]))}>
+            Restore
+          </Button>
+          {canPurge ? (
+            <Button
+              variant="danger"
+              disabled={pending}
+              onClick={() =>
+                run(
+                  'Delete this lead FOR EVER? Its calls, notes, follow-ups and history are erased too. This cannot be undone.',
+                  () => purgeLeads([leadId]),
+                  () => router.push('/leads?view=deleted'),
+                )
+              }
+            >
+              Delete forever
+            </Button>
+          ) : null}
+        </>
+      ) : (
+        <Button
+          variant="danger"
+          disabled={pending}
+          onClick={() =>
+            run(
+              'Delete this lead? It is unassigned and moved to Deleted, where it can be restored.',
+              () => deleteLeads([leadId]),
+              () => router.push('/leads'),
+            )
+          }
+        >
+          Delete
+        </Button>
+      )}
+      {error ? <p className="w-full text-sm text-danger">{error}</p> : null}
+    </>
   );
 }
 
