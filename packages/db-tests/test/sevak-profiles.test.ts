@@ -31,12 +31,12 @@ describe('seva profile and directory', () => {
     await expect(q(f.db, f.volA1, `update public.profiles set seva_days = '{funday}' where id = $1`, [f.volA1])).rejects.toThrow();
   });
 
-  it('every active member sees the directory, without emails or phones', async () => {
+  it('every active member sees the directory, without emails, and phones only when shared', async () => {
     await q(f.db, f.volA1, `update public.profiles set nearest_centre = 'Koramangala' where id = $1`, [f.volA1]);
     const rows = await q<Record<string, unknown>>(f.db, f.volB1, `select * from public.member_directory()`);
     expect(rows.find((r) => r.id === f.volA1)).toMatchObject({ nearest_centre: 'Koramangala', role: 'volunteer', team_name: 'Team A' });
     expect(Object.keys(rows[0]!)).not.toContain('email');
-    expect(Object.keys(rows[0]!)).not.toContain('phone');
+    expect(rows.filter((r) => r.id !== f.volB1).every((r) => r.phone === null)).toBe(true); // nobody shared theirs
 
     await sq(f.db, `update public.profiles set status = 'inactive' where id = $1`, [f.volA2]);
     expect(rows.length - (await q(f.db, f.volB1, `select * from public.member_directory()`)).length).toBe(1);
@@ -140,5 +140,21 @@ describe('leads captured offline', () => {
     await expect(
       q(f.db, f.teacherA, `insert into public.leads (full_name, phone, team_id, client_ref) values ('X', $1, $2, $3)`, [nextPhone(), f.teamA, ref()]),
     ).rejects.toThrow();
+  });
+});
+
+describe('phone in the Sevak Directory', () => {
+  it('hidden unless the member chooses to show it; always visible to themselves', async () => {
+    const f2 = await createFixture();
+    await sq(f2.db, `update public.profiles set phone = '+919800001111' where id = $1`, [f2.volA2]);
+    const phoneOf = async (viewer: string, member: string) =>
+      (await q<{ id: string; phone: string | null }>(f2.db, viewer, `select id, phone from public.member_directory()`)).find((r) => r.id === member)?.phone;
+    expect(await phoneOf(f2.volA1, f2.volA2)).toBeNull();
+    expect(await phoneOf(f2.volA2, f2.volA2)).toBe('+919800001111');
+    await q(f2.db, f2.volA2, `update public.profiles set show_phone_in_directory = true where id = $1`, [f2.volA2]);
+    expect(await phoneOf(f2.volA1, f2.volA2)).toBe('+919800001111');
+    // Nobody can switch it on for someone else.
+    await q(f2.db, f2.volA1, `update public.profiles set show_phone_in_directory = false where id = $1`, [f2.volA2]);
+    expect(await phoneOf(f2.volA1, f2.volA2)).toBe('+919800001111');
   });
 });

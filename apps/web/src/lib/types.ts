@@ -22,6 +22,7 @@ export interface Profile {
   nearest_centre: string | null;
   address: string | null;
   seva_interests: string[];
+  show_phone_in_directory?: boolean;
   last_login_at: string | null;
   last_seen_at: string | null;
   created_at: string;

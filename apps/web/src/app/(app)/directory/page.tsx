@@ -1,33 +1,16 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ROLE_LABELS, SEVA_DAY_LABELS, SEVA_DAYS, SEVA_TIME_LABELS, SEVA_TIMES, type Role, type SevaDay, type SevaTime } from '@crm/shared';
+import { ROLE_LABELS, SEVA_DAY_LABELS, SEVA_DAYS, SEVA_TIME_LABELS, SEVA_TIMES, type SevaDay, type SevaTime } from '@crm/shared';
 import { Alert, Badge, Button, ButtonLink, Card, EmptyState, Input, PageHeader, Select } from '@/components/ui';
 import { requireFeature } from '@/lib/features';
-import { createClient } from '@/lib/supabase/server';
+import { hasSevaProfile, loadDirectory } from './data';
 
 export const metadata: Metadata = { title: 'Sevak Directory' };
 
-type Member = {
-  id: string;
-  full_name: string;
-  role: Role;
-  team_name: string | null;
-  seva_days: SevaDay[];
-  seva_times: SevaTime[];
-  seva_note: string | null;
-  nearest_centre: string | null;
-  address: string | null;
-  seva_interests: string[];
-};
-
-const hasSevaProfile = (m: Pick<Member, 'seva_days' | 'seva_interests' | 'nearest_centre'>) =>
-  m.seva_days.length > 0 || m.seva_interests.length > 0 || !!m.nearest_centre;
-
 export default async function DirectoryPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  const [profile, params, supabase] = await Promise.all([requireFeature('sevak_directory'), searchParams, createClient()]);
-  const { data, error } = await supabase.rpc('member_directory');
-  if (error) return <Alert>Could not load the directory. Run the latest database migration.</Alert>;
-  const all = (data ?? []) as Member[];
+  const [profile, params, loaded] = await Promise.all([requireFeature('sevak_directory'), searchParams, loadDirectory()]);
+  if (!loaded) return <Alert>Could not load the directory. Run the latest database migration.</Alert>;
+  const all = loaded;
 
   const q = params.q?.trim().toLowerCase() ?? '';
   const interest = params.interest ?? '';
@@ -55,7 +38,11 @@ export default async function DirectoryPage({ searchParams }: { searchParams: Pr
       <PageHeader
         title="Sevak Directory"
         description="Who can help, when, and with what. Everyone fills in their own seva profile."
-        actions={<ButtonLink href="/profile" variant="secondary">Edit my seva profile</ButtonLink>}
+        actions={
+          <ButtonLink href="/profile" variant="secondary">
+            Edit my seva profile
+          </ButtonLink>
+        }
       />
 
       {me && !hasSevaProfile(me) ? (
@@ -151,57 +138,64 @@ export default async function DirectoryPage({ searchParams }: { searchParams: Pr
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {members.map((m) => (
             <li key={m.id}>
-              <Card className="h-full p-4 text-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{m.full_name || 'Member'}</p>
-                    <p className="text-xs text-ink-muted">
-                      {ROLE_LABELS[m.role]}
-                      {m.team_name ? ` · ${m.team_name}` : ''}
-                    </p>
+              <Link
+                href={`/directory/${m.id}`}
+                className="block h-full rounded-xl focus-visible:outline-2 focus-visible:outline-accent"
+                aria-label={`${m.full_name || 'Member'}: see details`}
+              >
+                <Card className="flex h-full flex-col p-4 text-sm transition-colors hover:border-accent/50 hover:bg-canvas">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{m.full_name || 'Member'}</p>
+                      <p className="text-xs text-ink-muted">
+                        {ROLE_LABELS[m.role]}
+                        {m.team_name ? ` · ${m.team_name}` : ''}
+                      </p>
+                    </div>
+                    {m.id === profile.id ? <Badge tone="accent">You</Badge> : null}
                   </div>
-                  {m.id === profile.id ? <Badge tone="accent">You</Badge> : null}
-                </div>
-                <dl className="mt-3 grid grid-cols-[5.5rem_1fr] gap-x-2 gap-y-1.5">
-                  {m.seva_days.length || m.seva_times.length ? (
-                    <>
-                      <dt className="text-ink-muted">Available</dt>
-                      <dd>
-                        {SEVA_DAYS.filter((d) => m.seva_days.includes(d))
-                          .map((d) => SEVA_DAY_LABELS[d])
-                          .join(', ') || 'Any day'}
-                        {m.seva_times.length
-                          ? ` · ${SEVA_TIMES.filter((t) => m.seva_times.includes(t))
-                              .map((t) => SEVA_TIME_LABELS[t].toLowerCase())
-                              .join(', ')}`
-                          : ''}
-                        {m.seva_note ? <span className="block text-ink-muted">{m.seva_note}</span> : null}
-                      </dd>
-                    </>
+                  <dl className="mt-3 grid grid-cols-[5.5rem_1fr] gap-x-2 gap-y-1.5">
+                    {m.seva_days.length || m.seva_times.length ? (
+                      <>
+                        <dt className="text-ink-muted">Available</dt>
+                        <dd>
+                          {SEVA_DAYS.filter((d) => m.seva_days.includes(d))
+                            .map((d) => SEVA_DAY_LABELS[d])
+                            .join(', ') || 'Any day'}
+                          {m.seva_times.length
+                            ? ` · ${SEVA_TIMES.filter((t) => m.seva_times.includes(t))
+                                .map((t) => SEVA_TIME_LABELS[t].toLowerCase())
+                                .join(', ')}`
+                            : ''}
+                          {m.seva_note ? <span className="block text-ink-muted">{m.seva_note}</span> : null}
+                        </dd>
+                      </>
+                    ) : null}
+                    {m.nearest_centre ? (
+                      <>
+                        <dt className="text-ink-muted">Centre</dt>
+                        <dd>{m.nearest_centre}</dd>
+                      </>
+                    ) : null}
+                    {m.address ? (
+                      <>
+                        <dt className="text-ink-muted">Area</dt>
+                        <dd className="whitespace-pre-wrap">{m.address}</dd>
+                      </>
+                    ) : null}
+                  </dl>
+                  {m.seva_interests.length ? (
+                    <ul className="mt-3 flex flex-wrap gap-1">
+                      {m.seva_interests.map((i) => (
+                        <li key={i}>
+                          <Badge>{i}</Badge>
+                        </li>
+                      ))}
+                    </ul>
                   ) : null}
-                  {m.nearest_centre ? (
-                    <>
-                      <dt className="text-ink-muted">Centre</dt>
-                      <dd>{m.nearest_centre}</dd>
-                    </>
-                  ) : null}
-                  {m.address ? (
-                    <>
-                      <dt className="text-ink-muted">Area</dt>
-                      <dd className="whitespace-pre-wrap">{m.address}</dd>
-                    </>
-                  ) : null}
-                </dl>
-                {m.seva_interests.length ? (
-                  <ul className="mt-3 flex flex-wrap gap-1">
-                    {m.seva_interests.map((i) => (
-                      <li key={i}>
-                        <Badge>{i}</Badge>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </Card>
+                  <p className="mt-auto pt-3 text-xs font-medium text-accent">See details{m.phone && m.id !== profile.id ? ' · can call or WhatsApp' : ''} →</p>
+                </Card>
+              </Link>
             </li>
           ))}
         </ul>

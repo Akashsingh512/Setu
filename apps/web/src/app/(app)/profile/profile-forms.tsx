@@ -119,6 +119,20 @@ export function SevaProfileForm({ profile, centres }: { profile: Profile; centre
       <Field label="Other seva interests" htmlFor="s-other" hint="Separate with commas.">
         <Input id="s-other" name="seva_interests_other" defaultValue={other.join(', ')} />
       </Field>
+      <label className="flex items-start gap-3 text-sm">
+        <input
+          type="checkbox"
+          name="show_phone_in_directory"
+          defaultChecked={!!profile.show_phone_in_directory}
+          className="mt-0.5 size-4 accent-accent"
+        />
+        <span>
+          Show my phone number to other members in the Sevak Directory
+          <span className="block text-xs text-ink-muted">
+            {profile.phone ? 'So people can call or WhatsApp you for seva. Off: only your seva details are shown.' : 'Add your phone number above first.'}
+          </span>
+        </span>
+      </label>
       <SubmitButton>Save seva profile</SubmitButton>
     </form>
   );

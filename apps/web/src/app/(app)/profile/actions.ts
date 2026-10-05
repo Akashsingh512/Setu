@@ -54,7 +54,10 @@ export async function saveSevaProfile(_: ActionState | undefined, formData: Form
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
 
   const supabase = await createClient();
-  const { error } = await supabase.from('profiles').update(parsed.data).eq('id', profile.id);
+  const { error } = await supabase
+    .from('profiles')
+    .update({ ...parsed.data, show_phone_in_directory: formData.get('show_phone_in_directory') === 'on' })
+    .eq('id', profile.id);
   if (error) return { error: friendlyError(error) };
   revalidatePath('/profile');
   revalidatePath('/directory');
