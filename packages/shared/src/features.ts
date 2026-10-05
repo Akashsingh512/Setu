@@ -2,6 +2,7 @@
 // The switches live in public.role_features and every one is enforced in the
 // database (private.role_can); the app only uses them to decide what to show.
 import type { Role } from './constants';
+import { DV_PERMISSION_INFO, DV_PERMISSIONS, type DvPermission } from './digital-volunteer';
 
 export const FEATURES = [
   'team_leads',
@@ -15,10 +16,43 @@ export const FEATURES = [
   'manage_programs',
   'sevak_directory',
   'send_from_setu',
+  ...DV_PERMISSIONS.map((p) => `dv_${p}` as const),
 ] as const;
 export type Feature = (typeof FEATURES)[number];
+/** A Digital Volunteer permission given to a whole role ("dv_" + the permission). */
+export type DvFeature = `dv_${DvPermission}`;
 
-export const FEATURE_INFO: Record<Feature, { label: string; description: string; group: string; teamWide?: boolean; needsTeamLeads?: boolean }> = {
+export function isDvFeature(f: Feature): f is DvFeature {
+  return f.startsWith('dv_');
+}
+
+/** Digital Volunteer permissions that need a confirmation before a whole role gets them. */
+const DV_CAUTION: Partial<Record<DvPermission, string>> = {
+  reply_messages: 'They can send WhatsApp messages from the organisation number.',
+  manage_groups: 'They decide which groups the bot reads and what it may do there.',
+  assign_seva: 'They can approve seva requests, which hands out leads.',
+  schedule_announcements: 'They can post announcements to WhatsApp groups.',
+  manage_integration: 'They can unlink the WhatsApp number and use the emergency switch.',
+};
+
+export interface FeatureInfo {
+  label: string;
+  description: string;
+  group: string;
+  /** Lets the person see their whole team's leads. */
+  teamWide?: boolean;
+  needsTeamLeads?: boolean;
+  /** Asked to confirm before switching it on for a whole role. */
+  caution?: string;
+}
+
+export const FEATURE_INFO: Record<Feature, FeatureInfo> = {
+  ...(Object.fromEntries(
+    DV_PERMISSIONS.map((p) => [
+      `dv_${p}`,
+      { label: DV_PERMISSION_INFO[p].label, description: DV_PERMISSION_INFO[p].description, group: 'Digital Volunteer', caution: DV_CAUTION[p] },
+    ]),
+  ) as Record<DvFeature, FeatureInfo>),
   team_leads: {
     label: "See the team's leads",
     description: 'All leads of their team, the team dashboard and lead exports. Off: only the leads assigned to them.',
@@ -44,6 +78,6 @@ export const FEATURE_INFO: Record<Feature, { label: string; description: string;
 
 /** What each role had before feature access existed (the database seeds the same). */
 export const DEFAULT_FEATURES: Record<Exclude<Role, 'super_admin'>, Feature[]> = {
-  teacher: [...FEATURES],
+  teacher: FEATURES.filter((f) => !isDvFeature(f)),
   volunteer: ['add_leads', 'sevak_directory', 'send_from_setu'],
 };

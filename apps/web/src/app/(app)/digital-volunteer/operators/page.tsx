@@ -28,7 +28,11 @@ export default async function OperatorsPage() {
     <div className="space-y-4">
       <p className="max-w-2xl text-sm text-ink-muted">
         Super admins always have full access. Give other people only what they need. They use their normal CRM login - there are no separate
-        passwords. Changes apply immediately and are recorded in the audit log.
+        passwords. Changes apply immediately and are recorded in the audit log. To give a permission to all teachers or all volunteers at once, use{' '}
+        <a href="/access" className="text-accent underline">
+          Feature access
+        </a>
+        .
       </p>
       <Card>
         <ul className="divide-y divide-line">

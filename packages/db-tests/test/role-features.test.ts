@@ -77,3 +77,34 @@ describe('feature access', () => {
     await expect(q(f.db, f.volA1, `select * from public.member_directory()`)).rejects.toThrow(/Not authorised/);
   });
 });
+
+describe('Digital Volunteer by role', () => {
+  const dvCan = (who: string, perm: string) =>
+    q<{ ok: boolean }>(f.db, who, `select private.dv_can($1::public.dv_permission) as ok`, [perm]).then((r) => r[0]!.ok);
+
+  it('all off by default; a role switch gives the permission to everyone in the role', async () => {
+    expect(await sq(f.db, `select 1 from public.role_features where feature like 'dv\_%' and enabled`)).toHaveLength(0);
+    expect(await dvCan(f.teacherA, 'view_messages')).toBe(false);
+    expect((await q<{ ok: boolean }>(f.db, f.teacherA, `select private.dv_is_operator() as ok`))[0]!.ok).toBe(false);
+
+    await set('teacher', 'dv_view_messages', true);
+    expect(await dvCan(f.teacherA, 'view_messages')).toBe(true);
+    expect(await dvCan(f.teacherB, 'view_messages')).toBe(true);
+    expect(await dvCan(f.teacherA, 'reply_messages')).toBe(false);
+    expect(await dvCan(f.volA1, 'view_messages')).toBe(false);
+    expect((await q<{ ok: boolean }>(f.db, f.teacherA, `select private.dv_is_operator() as ok`))[0]!.ok).toBe(true);
+  });
+
+  it('per-person grants still work alongside', async () => {
+    await q(f.db, f.admin, `select public.dv_set_operator_permissions($1, '{reply_messages}')`, [f.volA1]);
+    expect(await dvCan(f.volA1, 'reply_messages')).toBe(true);
+    expect(await dvCan(f.volA2, 'reply_messages')).toBe(false);
+  });
+
+  it('people with the permission through their role are approver candidates', async () => {
+    await sq(f.db, `update public.profiles set phone = '+919800000999' where id = $1`, [f.teacherA]);
+    await set('teacher', 'dv_assign_seva', true);
+    const rows = await q<{ id: string; can_approve: boolean }>(f.db, f.admin, `select id, can_approve from public.dv_approver_candidates()`);
+    expect(rows.find((r) => r.id === f.teacherA)).toMatchObject({ can_approve: true });
+  });
+});

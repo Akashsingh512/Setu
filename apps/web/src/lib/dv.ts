@@ -2,6 +2,7 @@ import { cache } from 'react';
 import { redirect } from 'next/navigation';
 import { DV_PERMISSIONS, type DvPermission } from '@crm/shared';
 import { requireProfile } from './auth';
+import { getFeatures } from './features';
 import { createClient } from './supabase/server';
 
 export interface DvAccess {
@@ -20,9 +21,14 @@ export const getDvAccess = cache(async (): Promise<DvAccess> => {
   let permissions: Set<DvPermission>;
   if (profile.role === 'super_admin') permissions = new Set(DV_PERMISSIONS);
   else {
+    // Given to this person (Operators), or to their whole role (Feature access).
     const supabase = await createClient();
-    const { data } = await supabase.from('dv_operator_permissions').select('permission').eq('profile_id', profile.id);
+    const [{ data }, features] = await Promise.all([
+      supabase.from('dv_operator_permissions').select('permission').eq('profile_id', profile.id),
+      getFeatures(),
+    ]);
     permissions = new Set((data ?? []).map((r) => r.permission as DvPermission));
+    for (const p of DV_PERMISSIONS) if (features.has(`dv_${p}`)) permissions.add(p);
   }
   return { isOperator: permissions.size > 0, isSuperAdmin: profile.role === 'super_admin', permissions, can: (p) => permissions.has(p) };
 });

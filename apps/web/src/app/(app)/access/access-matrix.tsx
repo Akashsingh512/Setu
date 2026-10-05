@@ -19,6 +19,9 @@ export function AccessMatrix({ teacher, volunteer }: { teacher: Feature[]; volun
 
   function apply(role: RoleKey, feature: Feature, enabled: boolean) {
     const info = FEATURE_INFO[feature];
+    if (enabled && info.caution) {
+      if (!confirm(`${info.label} for all ${role === 'teacher' ? 'teachers' : 'volunteers'}: ${info.caution} Continue?`)) return;
+    }
     if (enabled && role === 'volunteer' && info.teamWide) {
       const ok = confirm(
         `"${info.label}" lets volunteers see the leads of their whole team, not only their own. Switch it on for all volunteers?`,
@@ -94,6 +97,7 @@ export function AccessMatrix({ teacher, volunteer }: { teacher: Feature[]; volun
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">{info.label}</span>
                         {info.teamWide ? <Badge tone="warn">Shows the whole team&apos;s leads</Badge> : null}
+                        {info.caution ? <Badge tone="warn">Sensitive</Badge> : null}
                       </div>
                       <p className="mt-0.5 text-xs text-ink-muted">{info.description}</p>
                     </td>
@@ -132,8 +136,8 @@ export function AccessMatrix({ teacher, volunteer }: { teacher: Feature[]; volun
         ))}
       </div>
       <p className="text-xs text-ink-muted">
-        Digital Volunteer access is given per person, in Digital Volunteer → Operators. Teachers / Users, Feature access and Settings stay with super
-        admins.
+        Digital Volunteer switches give a permission to everyone in that role. You can still give it to one person in Digital Volunteer → Operators;
+        a person has it if either gives it. Teachers / Users, Feature access and Settings stay with super admins.
       </p>
     </div>
   );
