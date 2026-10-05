@@ -3,6 +3,7 @@ import {
   buildCourseMessage,
   chooseMessageCourseId,
   courseInputSchema,
+  DEFAULT_FEATURES,
   formatSessionSchedule,
   inviteUserSchema,
   leadInputSchema,
@@ -150,9 +151,22 @@ describe('validation schemas', () => {
 });
 
 describe('navigation', () => {
-  it('shows each role only its modules', () => {
-    expect(navForRole('volunteer').map((n) => n.label)).toEqual(['Dashboard', 'My Leads', 'Upcoming Programs', 'Sevak Directory', 'Notifications', 'Profile']);
-    expect(navForRole('teacher').map((n) => n.module)).not.toContain('settings');
-    expect(navForRole('super_admin').map((n) => n.module)).toContain('users');
+  const vol = new Set(DEFAULT_FEATURES.volunteer);
+  const teacher = new Set(DEFAULT_FEATURES.teacher);
+
+  it('shows each role only its modules (default feature access)', () => {
+    expect(navForRole('volunteer', { features: vol }).map((n) => n.label)).toEqual(['Dashboard', 'My Leads', 'Upcoming Programs', 'Sevak Directory', 'Notifications', 'Profile']);
+    expect(navForRole('teacher', { features: teacher }).map((n) => n.module)).toEqual([
+      'dashboard', 'leads', 'volunteers', 'courses', 'upcoming', 'directory', 'reports', 'notifications', 'profile',
+    ]);
+    expect(navForRole('super_admin').map((n) => n.module)).toEqual(expect.arrayContaining(['users', 'access', 'settings']));
+  });
+
+  it('follows the feature switches', () => {
+    const more = new Set([...vol, 'team_leads', 'view_reports'] as const);
+    const nav = navForRole('volunteer', { features: more });
+    expect(nav.find((n) => n.module === 'leads')!.label).toBe('Leads');
+    expect(nav.map((n) => n.module)).toContain('reports');
+    expect(navForRole('teacher', { features: new Set() }).map((n) => n.module)).toEqual(['dashboard', 'leads', 'upcoming', 'notifications', 'profile']);
   });
 });

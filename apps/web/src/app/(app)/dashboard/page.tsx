@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { isStaff } from '@crm/shared';
 import { CallLink, DeadlineBadge, StatusBadge } from '@/components/lead-bits';
 import { Card, CardHeader, EmptyState, PageHeader, Stat } from '@/components/ui';
 import { getOrgSettings, requireProfile } from '@/lib/auth';
+import { hasFeature } from '@/lib/features';
 import { getProfileNames, getStatuses, startOfTodayIso, statusMap } from '@/lib/data';
 import { formatDateTime, relativeTime } from '@/lib/format';
 import { createClient } from '@/lib/supabase/server';
@@ -14,7 +14,8 @@ export const metadata: Metadata = { title: 'Dashboard' };
 
 export default async function DashboardPage() {
   const [profile, settings] = await Promise.all([requireProfile(), getOrgSettings()]);
-  return isStaff(profile.role) ? (
+  // Feature access "See the team's leads" shows the team dashboard.
+  return (await hasFeature('team_leads')) ? (
     <StaffDashboard profile={profile} settings={settings} />
   ) : (
     <VolunteerDashboard profile={profile} settings={settings} />

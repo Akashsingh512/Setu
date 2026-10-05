@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ROLE_LABELS, SEVA_DAY_LABELS, SEVA_DAYS, SEVA_TIME_LABELS, SEVA_TIMES, type Role, type SevaDay, type SevaTime } from '@crm/shared';
 import { Alert, Badge, Button, ButtonLink, Card, EmptyState, Input, PageHeader, Select } from '@/components/ui';
-import { requireProfile } from '@/lib/auth';
+import { requireFeature } from '@/lib/features';
 import { createClient } from '@/lib/supabase/server';
 
 export const metadata: Metadata = { title: 'Sevak Directory' };
@@ -24,7 +24,7 @@ const hasSevaProfile = (m: Pick<Member, 'seva_days' | 'seva_interests' | 'neares
   m.seva_days.length > 0 || m.seva_interests.length > 0 || !!m.nearest_centre;
 
 export default async function DirectoryPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  const [profile, params, supabase] = await Promise.all([requireProfile(), searchParams, createClient()]);
+  const [profile, params, supabase] = await Promise.all([requireFeature('sevak_directory'), searchParams, createClient()]);
   const { data, error } = await supabase.rpc('member_directory');
   if (error) return <Alert>Could not load the directory. Run the latest database migration.</Alert>;
   const all = (data ?? []) as Member[];

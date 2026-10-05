@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
-import { formatSessionSchedule, isStaff, SESSION_MODE_LABELS } from '@crm/shared';
+import { formatSessionSchedule, SESSION_MODE_LABELS } from '@crm/shared';
 import { Badge, Card, EmptyState, Input, PageHeader, Select } from '@/components/ui';
 import { getOrgSettings, requireProfile } from '@/lib/auth';
+import { hasFeature } from '@/lib/features';
 import { getCourses, getTeams } from '@/lib/data';
 import { signPosters } from '@/lib/posters';
 import { createClient } from '@/lib/supabase/server';
@@ -13,7 +14,7 @@ export const metadata: Metadata = { title: 'Upcoming Programs' };
 export default async function UpcomingPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const supabase = await createClient();
   const [profile, settings, sp] = await Promise.all([requireProfile(), getOrgSettings(), searchParams]);
-  const staff = isStaff(profile.role);
+  const staff = await hasFeature('manage_programs');
 
   let query = supabase.from('upcoming_sessions').select('*').order('starts_at');
   if (sp.mode) query = query.eq('mode', sp.mode);
@@ -32,7 +33,7 @@ export default async function UpcomingPage({ searchParams }: { searchParams: Pro
       <PageHeader title="Upcoming Programs" description="Scheduled sessions. Past and cancelled sessions are hidden automatically." />
       {staff ? (
         <div className="mb-6">
-          <SessionForm courses={courses} teams={teams} lockedTeamId={profile.role === 'teacher' ? profile.team_id : null} defaultTimeZone={settings.default_timezone} />
+          <SessionForm courses={courses} teams={teams} lockedTeamId={profile.role === 'super_admin' ? null : profile.team_id} defaultTimeZone={settings.default_timezone} />
         </div>
       ) : null}
 
@@ -110,7 +111,7 @@ export default async function UpcomingPage({ searchParams }: { searchParams: Pro
                           posterUrl={s.poster_path ? (posters[s.poster_path] ?? null) : null}
                           courses={courses}
                           teams={teams}
-                          lockedTeamId={profile.role === 'teacher' ? profile.team_id : null}
+                          lockedTeamId={profile.role === 'super_admin' ? null : profile.team_id}
                           defaultTimeZone={settings.default_timezone}
                         />
                         {running ? <CompleteSessionButton sessionId={s.id} /> : null}

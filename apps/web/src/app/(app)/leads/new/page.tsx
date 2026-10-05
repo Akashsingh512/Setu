@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
-import { isStaff } from '@crm/shared';
 import { Alert, PageHeader } from '@/components/ui';
-import { requireProfile } from '@/lib/auth';
+import { requireFeature, hasFeature } from '@/lib/features';
 import { getCourses, getTeams, getVisibleProfiles } from '@/lib/data';
 import { createLead, volunteerCreateLead } from '../actions';
 import { LeadForm } from '../lead-form';
@@ -9,9 +8,10 @@ import { LeadForm } from '../lead-form';
 export const metadata: Metadata = { title: 'Add lead' };
 
 export default async function NewLeadPage() {
-  const profile = await requireProfile();
+  const profile = await requireFeature('add_leads');
 
-  if (!isStaff(profile.role)) {
+  // Without the team's leads, people add leads the volunteer way (to their team, optionally to themselves).
+  if (profile.role === 'volunteer' && !(await hasFeature('team_leads'))) {
     const courses = await getCourses();
     return (
       <>
@@ -42,7 +42,7 @@ export default async function NewLeadPage() {
           action={createLead}
           courses={courses}
           teams={teams}
-          fixedTeamId={profile.role === 'teacher' ? profile.team_id : null}
+          fixedTeamId={profile.role === 'super_admin' ? null : profile.team_id}
           volunteers={volunteers}
         />
       )}

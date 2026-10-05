@@ -7,19 +7,21 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { PushPrompt } from '@/components/push';
 import { SignOutButton } from '@/components/sign-out-button';
 import { getDvAccess } from '@/lib/dv';
+import { getFeatures } from '@/lib/features';
 import { SetuMark } from '@/components/brand';
 import { OfflineLeadSync } from '@/components/offline-leads';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   // Independent requests run in parallel: each Supabase round trip is ~0.5 s from here.
-  const [profile, { count: unread }, dv] = await Promise.all([
+  const [profile, { count: unread }, dv, features] = await Promise.all([
     requireProfile(),
     supabase.from('notifications').select('id', { count: 'exact', head: true }).is('read_at', null),
     getDvAccess(),
+    getFeatures(),
   ]);
 
-  const nav = navForRole(profile.role, { digitalVolunteer: dv.isOperator });
+  const nav = navForRole(profile.role, { digitalVolunteer: dv.isOperator, features });
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -54,7 +56,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </main>
       </div>
 
-      <MobileNav role={profile.role} unread={unread ?? 0} />
+      <MobileNav teamLeads={features.has('team_leads')} unread={unread ?? 0} />
       <RealtimeRefresh userId={profile.id} />
       <OfflineLeadSync userId={profile.id} role={profile.role} teamId={profile.team_id} />
     </div>

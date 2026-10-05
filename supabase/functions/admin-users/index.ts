@@ -41,8 +41,17 @@ Deno.serve(async (req) => {
     .select('id, role, status, team_id')
     .eq('id', userData.user.id)
     .single();
-  if (!caller || caller.status !== 'active' || caller.role === 'volunteer') {
-    return json(403, { error: 'Not authorised' });
+  if (!caller || caller.status !== 'active') return json(403, { error: 'Not authorised' });
+  // Super admins, or a role given "Manage volunteers" in Feature access.
+  const isAdmin = caller.role === 'super_admin';
+  if (!isAdmin) {
+    const { data: feature } = await admin
+      .from('role_features')
+      .select('enabled')
+      .eq('role', caller.role)
+      .eq('feature', 'manage_volunteers')
+      .maybeSingle();
+    if (!feature?.enabled) return json(403, { error: 'Not authorised' });
   }
 
   let body: Record<string, unknown>;
@@ -72,8 +81,8 @@ Deno.serve(async (req) => {
     if (!ROLES.includes(role)) return json(400, { error: 'Invalid role' });
     if (teamId && !UUID.test(teamId)) return json(400, { error: 'Invalid team' });
 
-    if (caller.role === 'teacher') {
-      if (role !== 'volunteer') return json(403, { error: 'Teachers can only create volunteer accounts' });
+    if (!isAdmin) {
+      if (role !== 'volunteer') return json(403, { error: 'Only super admins can create teacher or admin accounts' });
       teamId = caller.team_id;
     }
     if (role !== 'super_admin' && !teamId) return json(400, { error: 'Teachers and volunteers must belong to a team' });
@@ -101,8 +110,8 @@ Deno.serve(async (req) => {
 
     const { data: target } = await admin.from('profiles').select('id, role, team_id').eq('id', userId).single();
     if (!target) return json(404, { error: 'User not found' });
-    if (caller.role === 'teacher' && (target.role !== 'volunteer' || target.team_id !== caller.team_id)) {
-      return json(403, { error: 'Teachers can only manage volunteers in their team' });
+    if (!isAdmin && (target.role !== 'volunteer' || target.team_id !== caller.team_id)) {
+      return json(403, { error: 'You can only manage volunteers in your team' });
     }
 
     const { error } = await admin.auth.admin.updateUserById(userId, { ban_duration: active ? 'none' : '876000h' });

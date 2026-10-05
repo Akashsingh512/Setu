@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import type { NavItem, Role } from '@crm/shared';
+import type { NavItem } from '@crm/shared';
 import { cn } from '@/components/ui';
 
 function isActive(pathname: string, href: string) {
@@ -47,7 +47,7 @@ const MOBILE: { href: string; label: string; staffLabel?: string }[] = [
   { href: '/profile', label: 'Profile' },
 ];
 
-export function MobileNav({ role, unread }: { role: Role; unread: number }) {
+export function MobileNav({ teamLeads, unread }: { teamLeads: boolean; unread: number }) {
   const pathname = usePathname();
   return (
     <nav
@@ -63,7 +63,7 @@ export function MobileNav({ role, unread }: { role: Role; unread: number }) {
             aria-current={active ? 'page' : undefined}
             className={cn('relative flex min-h-14 flex-col items-center justify-center text-xs', active ? 'font-semibold text-accent' : 'text-ink-muted')}
           >
-            {role !== 'volunteer' && item.staffLabel ? item.staffLabel : item.label}
+            {teamLeads && item.staffLabel ? item.staffLabel : item.label}
             {item.href === '/notifications' && unread > 0 ? (
               <span className="absolute top-2 right-[calc(50%-1.6rem)] size-2 rounded-full bg-accent" aria-label={`${unread} unread`} />
             ) : null}

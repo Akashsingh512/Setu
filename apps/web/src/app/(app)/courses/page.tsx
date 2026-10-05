@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
-import { isStaff } from '@crm/shared';
 import { Badge, Card, EmptyState, PageHeader } from '@/components/ui';
 import { requireProfile } from '@/lib/auth';
+import { hasFeature } from '@/lib/features';
 import { getCourses, getTeams } from '@/lib/data';
 import { CourseEditor } from './course-editor';
 
@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: 'Courses' };
 
 export default async function CoursesPage() {
   const profile = await requireProfile();
-  const staff = isStaff(profile.role);
+  const staff = await hasFeature('manage_courses');
   const [courses, teams] = await Promise.all([getCourses(!staff), staff ? getTeams() : Promise.resolve([])]);
   const canEdit = (c: { team_id: string | null; created_by: string | null }) =>
     profile.role === 'super_admin' || (staff && (c.team_id === profile.team_id || c.created_by === profile.id));
@@ -19,7 +19,7 @@ export default async function CoursesPage() {
       <PageHeader title="Courses & Programs" description="Course details and registration links used in WhatsApp messages." />
       {staff ? (
         <div className="mb-6">
-          <CourseEditor teams={teams} lockedTeamId={profile.role === 'teacher' ? profile.team_id : null} />
+          <CourseEditor teams={teams} lockedTeamId={profile.role === 'super_admin' ? null : profile.team_id} />
         </div>
       ) : null}
       {courses.length === 0 ? (
@@ -46,7 +46,7 @@ export default async function CoursesPage() {
               ) : null}
               {canEdit(c) ? (
                 <div className="mt-2">
-                  <CourseEditor course={c} teams={teams} lockedTeamId={profile.role === 'teacher' ? profile.team_id : null} />
+                  <CourseEditor course={c} teams={teams} lockedTeamId={profile.role === 'super_admin' ? null : profile.team_id} />
                 </div>
               ) : null}
             </Card>

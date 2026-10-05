@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { formatPhone, isStaff } from '@crm/shared';
+import { formatPhone } from '@crm/shared';
 import { ButtonLink, Card, EmptyState, Input, PageHeader, Select } from '@/components/ui';
 import { getOrgSettings, requireProfile } from '@/lib/auth';
+import { getFeatures } from '@/lib/features';
 import { getCourses, getProfileNames, getStatuses, getVisibleProfiles, statusMap } from '@/lib/data';
 import { formatDateTime, relativeTime } from '@/lib/format';
 import { applyLeadFilters, awaitingLeadIds, readLeadFilters, type Filterable } from '@/lib/lead-filters';
@@ -24,10 +25,11 @@ type LeadWithDeadline = Lead & {
 export default async function LeadsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   // Start the lookups immediately; they don't depend on the profile.
   const lookups = Promise.all([getStatuses(), getCourses(), getVisibleProfiles(), getProfileNames(), getOrgSettings()]);
-  const [profile, sp] = await Promise.all([requireProfile(), searchParams]);
+  const [profile, sp, features] = await Promise.all([requireProfile(), searchParams, getFeatures()]);
   const filters = readLeadFilters(sp);
   const page = Math.max(1, Number(Array.isArray(sp.page) ? sp.page[0] : sp.page) || 1);
-  const staff = isStaff(profile.role);
+  // Feature access "See the team's leads": the team view; otherwise only their own leads.
+  const staff = features.has('team_leads');
   // Server Component: rendered once per request, so reading the clock here is safe.
   // eslint-disable-next-line react-hooks/purity
   const now = Date.now();
@@ -119,17 +121,21 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         actions={
           staff ? (
             <div className="flex gap-2">
-              <ButtonLink href="/leads/import" variant="secondary">
-                Import
-              </ButtonLink>
-              <OfflineAddLink />
-              <ButtonLink href="/leads/new">Add lead</ButtonLink>
+              {features.has('import_leads') ? (
+                <ButtonLink href="/leads/import" variant="secondary">
+                  Import
+                </ButtonLink>
+              ) : null}
+              {features.has('add_leads') ? <OfflineAddLink /> : null}
+              {features.has('add_leads') ? <ButtonLink href="/leads/new">Add lead</ButtonLink> : null}
             </div>
           ) : (
-            <div className="flex gap-2">
-              <OfflineAddLink />
-              <ButtonLink href="/leads/new">Add a lead I met</ButtonLink>
-            </div>
+            features.has('add_leads') ? (
+              <div className="flex gap-2">
+                <OfflineAddLink />
+                <ButtonLink href="/leads/new">Add a lead I met</ButtonLink>
+              </div>
+            ) : null
           )
         }
       />
@@ -192,7 +198,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
             description={
               staff ? 'Try clearing filters, or add a lead.' : 'When a teacher assigns leads to you, or you add someone you met, they appear here.'
             }
-            action={<ButtonLink href="/leads/new">{staff ? 'Add lead' : 'Add a lead I met'}</ButtonLink>}
+            action={features.has('add_leads') ? <ButtonLink href="/leads/new">{staff ? 'Add lead' : 'Add a lead I met'}</ButtonLink> : undefined}
           />
         </Card>
       ) : staff ? (
@@ -219,6 +225,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
           statuses={statuses}
           cards={cards}
           ctx={ctx}
+          canAssign={features.has('assign_leads')}
         />
       ) : (
         <LeadCards rows={cards} ctx={ctx} />

@@ -1,18 +1,19 @@
 import type { Metadata } from 'next';
 import { Alert, PageHeader } from '@/components/ui';
-import { getOrgSettings, requireStaff } from '@/lib/auth';
+import { getOrgSettings } from '@/lib/auth';
+import { requireFeature } from '@/lib/features';
 import { getCourses, getTeams, getVisibleProfiles } from '@/lib/data';
 import { Importer } from './importer';
 
 export const metadata: Metadata = { title: 'Import leads' };
 
 export default async function ImportLeadsPage() {
-  const profile = await requireStaff();
+  const profile = await requireFeature('import_leads');
   const [courses, teams, profiles, settings] = await Promise.all([getCourses(), getTeams(), getVisibleProfiles(), getOrgSettings()]);
   const volunteers = profiles
     .filter((p) => p.role === 'volunteer' && p.status === 'active')
     .map((p) => ({ id: p.id, name: p.full_name || p.email || 'Volunteer', teamId: p.team_id }));
-  const fixedTeamId = profile.role === 'teacher' ? profile.team_id : null;
+  const fixedTeamId = profile.role === 'super_admin' ? null : profile.team_id;
 
   return (
     <>

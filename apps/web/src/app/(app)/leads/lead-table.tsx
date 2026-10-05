@@ -36,6 +36,7 @@ export function LeadTable({
   statuses,
   cards,
   ctx,
+  canAssign = true,
 }: {
   rows: LeadRow[];
   volunteers: { id: string; name: string; accepting: boolean }[];
@@ -44,6 +45,8 @@ export function LeadTable({
   statuses: LeadStatus[];
   cards: LeadCardData[];
   ctx: MessageContext;
+  /** Feature access "Assign leads": without it, no selection or bulk actions. */
+  canAssign?: boolean;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [allMatching, setAllMatching] = useState(false);
@@ -126,7 +129,7 @@ export function LeadTable({
         </div>
       ) : null}
 
-      {selected.size > 0 || allMatching ? (
+      {canAssign && (selected.size > 0 || allMatching) ? (
         <div className="sticky top-2 z-10 mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-accent/30 bg-accent-soft px-4 py-3 text-sm">
           <span className="font-medium">{count} selected</span>
           {allOnPage && !allMatching && totalMatching > rows.length ? (
@@ -152,20 +155,24 @@ export function LeadTable({
 
       {/* Small screens: cards, no sideways scrolling. */}
       <div className="md:hidden">
-        <label className="mb-2 flex items-center gap-2 px-1 text-sm text-ink-muted">
-          <input type="checkbox" checked={allOnPage} onChange={togglePage} className="size-5 accent-accent" />
-          Select all on this page
-        </label>
-        <LeadCards rows={cards} ctx={ctx} selectable selected={selected} allSelected={allMatching} onToggle={toggle} />
+        {canAssign ? (
+          <label className="mb-2 flex items-center gap-2 px-1 text-sm text-ink-muted">
+            <input type="checkbox" checked={allOnPage} onChange={togglePage} className="size-5 accent-accent" />
+            Select all on this page
+          </label>
+        ) : null}
+        <LeadCards rows={cards} ctx={ctx} selectable={canAssign} selected={selected} allSelected={allMatching} onToggle={toggle} />
       </div>
 
       <Card className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[720px] text-sm">
           <thead className="border-b border-line text-left text-ink-muted">
             <tr>
-              <th className="w-10 px-4 py-3">
-                <input type="checkbox" aria-label="Select all on this page" checked={allOnPage} onChange={togglePage} className="size-4 accent-accent" />
-              </th>
+              {canAssign ? (
+                <th className="w-10 px-4 py-3">
+                  <input type="checkbox" aria-label="Select all on this page" checked={allOnPage} onChange={togglePage} className="size-4 accent-accent" />
+                </th>
+              ) : null}
               <th className="px-2 py-3 font-medium">Lead</th>
               <th className="px-2 py-3 font-medium">Status</th>
               <th className="px-2 py-3 font-medium">Assigned to</th>
@@ -176,15 +183,17 @@ export function LeadTable({
           <tbody className="divide-y divide-line">
             {rows.map((r) => (
               <tr key={r.id} className={selected.has(r.id) || allMatching ? 'bg-accent-soft/40' : undefined}>
-                <td className="px-4 py-3">
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${r.full_name}`}
-                    checked={allMatching || selected.has(r.id)}
-                    onChange={() => toggle(r.id)}
-                    className="size-4 accent-accent"
-                  />
-                </td>
+                {canAssign ? (
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${r.full_name}`}
+                      checked={allMatching || selected.has(r.id)}
+                      onChange={() => toggle(r.id)}
+                      className="size-4 accent-accent"
+                    />
+                  </td>
+                ) : null}
                 <td className="px-2 py-3">
                   <Link href={`/leads/${r.id}`} className="font-medium hover:underline">
                     {r.full_name}

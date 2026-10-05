@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { CALL_OUTCOME_LABELS, type CallOutcome } from '@crm/shared';
 import { Alert, Card, CardHeader, cn, EmptyState, Input, PageHeader, Select, Stat } from '@/components/ui';
-import { getOrgSettings, requireStaff } from '@/lib/auth';
+import { getOrgSettings } from '@/lib/auth';
+import { requireFeature } from '@/lib/features';
 import { getCourses, getStatuses, getTeams, getVisibleProfiles } from '@/lib/data';
 import { localInputToIso } from '@/lib/format';
 import { createClient } from '@/lib/supabase/server';
@@ -78,7 +79,7 @@ function HBars({ items, total }: { items: { label: string; value: number }[]; to
 }
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  const [profile, settings, sp] = await Promise.all([requireStaff(), getOrgSettings(), searchParams]);
+  const [profile, settings, sp] = await Promise.all([requireFeature('view_reports'), getOrgSettings(), searchParams]);
   const tz = settings.default_timezone;
   const today = ymdInTz(new Date(), tz);
   const to = isYmd(sp.to) ? sp.to : today;

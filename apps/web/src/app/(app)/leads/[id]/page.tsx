@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ASSIGNMENT_END_REASON_LABELS, CALL_OUTCOME_LABELS, formatPhone, isStaff, LEAD_SOURCE_LABELS } from '@crm/shared';
+import { ASSIGNMENT_END_REASON_LABELS, CALL_OUTCOME_LABELS, formatPhone, LEAD_SOURCE_LABELS } from '@crm/shared';
 import { DeadlineBadge, StatusBadge } from '@/components/lead-bits';
 import { Alert, Badge, ButtonLink, Card, CardHeader, EmptyState, PageHeader } from '@/components/ui';
 import { getOrgSettings, requireProfile } from '@/lib/auth';
 import { getCourses, getProfileNames, getStatuses, getVisibleProfiles, statusMap } from '@/lib/data';
 import { formatDate, formatDateTime, relativeTime } from '@/lib/format';
+import { getFeatures } from '@/lib/features';
 import { signPosters } from '@/lib/posters';
 import { createClient } from '@/lib/supabase/server';
 import type { CallAttempt, FollowUp, FollowUpComment, Lead, LeadActivity, LeadAssignment, LeadNote, MessageTemplate, UpcomingSession } from '@/lib/types';
@@ -61,7 +62,8 @@ export default async function LeadPage({
     supabase.from('message_templates').select('*').eq('is_active', true),
   ]);
   if (!lead) notFound();
-  const staff = isStaff(profile.role);
+  const features = await getFeatures();
+  const staff = features.has('team_leads');
   const historyIds = [lead.id, ...(merged ?? []).map((m) => m.id as string)];
 
   // Round trip 2: history across the lead and any merged duplicates.
@@ -94,7 +96,7 @@ export default async function LeadPage({
       <PageHeader
         title={lead.full_name}
         description={`${lead.lead_code} · added ${formatDate(lead.created_at)}`}
-        actions={staff ? <ButtonLink href={`/leads/${lead.id}/edit`} variant="secondary">Edit</ButtonLink> : undefined}
+        actions={staff && features.has('edit_leads') ? <ButtonLink href={`/leads/${lead.id}/edit`} variant="secondary">Edit</ButtonLink> : undefined}
       />
       <div className="mb-4 flex flex-wrap gap-1.5">
         <StatusBadge code={lead.status} statuses={sMap} />
@@ -129,6 +131,7 @@ export default async function LeadPage({
               courses={courses}
               sessions={upcoming}
               posterUrls={posters}
+              canSendFromSetu={features.has('send_from_setu')}
               templates={(templates.data ?? []) as MessageTemplate[]}
               leadCourseId={lead.course_id}
               volunteerDefaultCourseId={profile.default_course_id}
@@ -299,7 +302,7 @@ export default async function LeadPage({
             }))}
           />
 
-          {staff && !lead.archived_at ? (
+          {staff && features.has('assign_leads') && !lead.archived_at ? (
             <AssignBox
               leadId={lead.id}
               currentAssignee={lead.assigned_to}

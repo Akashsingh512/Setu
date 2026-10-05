@@ -28,6 +28,8 @@ export function ContactPanel(props: {
   sessions: UpcomingSession[];
   /** Signed poster URLs by storage path. */
   posterUrls: Record<string, string>;
+  /** Feature access "Send from Setu number". */
+  canSendFromSetu?: boolean;
   templates: MessageTemplate[];
   leadCourseId: string | null;
   volunteerDefaultCourseId: string | null;
@@ -180,10 +182,12 @@ function WhatsAppComposer(props: Parameters<typeof ContactPanel>[0]) {
       <FormMessage state={sent} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-ink-muted">
-          Open WhatsApp: your own WhatsApp, text only. Send from Setu number: sent right away by the organisation number, with the program&apos;s
-          poster.
+          {props.canSendFromSetu
+            ? "Open WhatsApp: your own WhatsApp, text only. Send from Setu number: sent right away by the organisation number, with the program's poster."
+            : 'WhatsApp opens with this message. Nothing is sent until you press send there.'}
         </p>
         <div className="flex flex-wrap gap-2">
+          {props.canSendFromSetu ? (
           <Button
             variant="secondary"
             className="min-h-11"
@@ -195,6 +199,7 @@ function WhatsAppComposer(props: Parameters<typeof ContactPanel>[0]) {
           >
             {sending ? 'Sending…' : 'Send from Setu number'}
           </Button>
+          ) : null}
           <a
             href={whatsAppUrl(props.whatsapp, text)}
             target="_blank"

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Card, EmptyState, PageHeader } from '@/components/ui';
-import { requireStaff } from '@/lib/auth';
+import { requireFeature } from '@/lib/features';
 import { loadUserRows } from '../users/load';
 import { PendingRegistrations } from '../users/pending';
 import { CreateUserForm, UserTable } from '../users/user-admin';
@@ -8,7 +8,7 @@ import { CreateUserForm, UserTable } from '../users/user-admin';
 export const metadata: Metadata = { title: 'Volunteers' };
 
 export default async function VolunteersPage() {
-  const profile = await requireStaff();
+  const profile = await requireFeature('manage_volunteers');
   const { rows, pending, teams } = await loadUserRows((role) => role === 'volunteer', profile);
   return (
     <>
@@ -18,7 +18,7 @@ export default async function VolunteersPage() {
       />
       <PendingRegistrations rows={pending} teams={teams} isSuperAdmin={profile.role === 'super_admin'} />
       <div className="mb-6">
-        <CreateUserForm mode="volunteers" teams={teams} myTeamId={profile.role === 'teacher' ? profile.team_id : null} />
+        <CreateUserForm mode="volunteers" teams={teams} myTeamId={profile.role === 'super_admin' ? null : profile.team_id} />
       </div>
       {rows.length ? (
         <UserTable rows={rows} mode="volunteers" teams={teams} currentUserId={profile.id} />
