@@ -4,7 +4,7 @@ import { requireDv } from '@/lib/dv';
 import { createClient } from '@/lib/supabase/server';
 import { ApproverToggle, DefaultsForm, LeadAllotters, VolunteerLimitRow, type AllotterCandidate, type LimitRow } from './limit-forms';
 
-export const metadata: Metadata = { title: 'Seva limits' };
+export const metadata: Metadata = { title: 'Seva & allotting' };
 
 export default async function SevaLimitsPage() {
   const access = await requireDv('manage_integration');

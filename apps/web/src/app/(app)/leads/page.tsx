@@ -118,6 +118,11 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         actions={
           staff ? (
             <div className="flex gap-2">
+              {features.has('edit_leads') ? (
+                <ButtonLink href={filters.view === 'deleted' ? '/leads' : '/leads?view=deleted'} variant="ghost">
+                  {filters.view === 'deleted' ? '← All leads' : 'Deleted leads'}
+                </ButtonLink>
+              ) : null}
               {features.has('import_leads') ? (
                 <ButtonLink href="/leads/import" variant="secondary">
                   Import
