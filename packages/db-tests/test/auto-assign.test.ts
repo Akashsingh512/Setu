@@ -154,3 +154,17 @@ describe('registered leads stay put', () => {
     await expect(sq(f.db, `update public.lead_statuses set is_closed = false where code = 'registered'`)).rejects.toThrow(/registered_closed/);
   });
 });
+
+describe('leads held for manual assignment', () => {
+  it('auto-assign skips them; a person can still assign them', async () => {
+    const held = await createLead(f.db, f.teamA, { manual_assignment_only: true });
+    const normal = await createLead(f.db, f.teamA);
+    await ageLead(held, 60);
+    await ageLead(normal, 60);
+    await run();
+    expect((await lead(held))!.assigned_to).toBeNull();
+    expect((await lead(normal))!.assigned_to).not.toBeNull();
+    await q(f.db, f.admin, `select public.assign_leads(array[$1]::uuid[], $2)`, [held, f.volA1]);
+    expect((await lead(held))!.assigned_to).toBe(f.volA1);
+  });
+});

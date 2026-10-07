@@ -19,3 +19,8 @@ supabase/.temp/
 supabase/.branches/
 supabase/signing_keys.json
 .claude/settings.local.json
+
+# Lead data (personal information): never commit
+supabase/imports/
+*.xlsx
+*.xls
