@@ -22,6 +22,7 @@ const schema = z.object({
   anthropic_key: z.string().trim().max(500),
   aws_key_id: z.string().trim().max(200),
   aws_secret: z.string().trim().max(500),
+  bedrock_api_key: z.string().trim().max(4000),
   clear_anthropic_key: z.boolean(),
   clear_aws_keys: z.boolean(),
 });
@@ -44,6 +45,7 @@ export async function saveAiSettings(input: z.input<typeof schema>): Promise<Act
     p_anthropic_key: s.clear_anthropic_key ? '' : s.anthropic_key || null,
     p_aws_key_id: s.clear_aws_keys ? '' : s.aws_key_id || null,
     p_aws_secret: s.clear_aws_keys ? '' : s.aws_secret || null,
+    p_bedrock_api_key: s.clear_aws_keys ? '' : s.bedrock_api_key || null,
   });
   if (error) return { error: friendlyError(error) };
   revalidatePath('/settings');

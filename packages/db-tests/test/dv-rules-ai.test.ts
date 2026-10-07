@@ -162,3 +162,14 @@ describe('approving suggested replies on WhatsApp', () => {
     void asUser;
   });
 });
+
+describe('Bedrock API key', () => {
+  it('saved like the other keys: only its last 4 characters are shown', async () => {
+    const f2 = await createFixture();
+    await q(f2.db, f2.admin, `select public.dv_ai_settings_save('bedrock', null, 'ap-south-1', 'apac.anthropic.claude-x', true, true, 'ai', null, null, null, 'ABSKsecretkey9876')`);
+    const [g] = await q<{ r: Record<string, unknown> }>(f2.db, f2.admin, `select public.dv_ai_settings_get() as r`);
+    expect(g!.r).toMatchObject({ provider: 'bedrock', bedrock_api_key_hint: '9876' });
+    expect(JSON.stringify(g!.r)).not.toContain('ABSKsecret');
+    expect((await sq<{ k: string }>(f2.db, `select bedrock_api_key as k from public.dv_ai_settings`))[0]!.k).toBe('ABSKsecretkey9876');
+  });
+});

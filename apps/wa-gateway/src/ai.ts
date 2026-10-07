@@ -25,6 +25,8 @@ type Settings = {
   bedrock_model_id: string | null;
   aws_access_key_id: string | null;
   aws_secret_access_key: string | null;
+  /** A Bedrock API key ("long-term API key"), used instead of the IAM keys when set. */
+  bedrock_api_key?: string | null;
   classify_enabled: boolean;
   draft_enabled: boolean;
 };
@@ -57,7 +59,7 @@ export async function loadAiSettings(db: SupabaseClient, force = false): Promise
   settings = s;
   loadedAt = Date.now();
 
-  const key = JSON.stringify([s?.provider, s?.anthropic_api_key, s?.bedrock_region, s?.aws_access_key_id, s?.aws_secret_access_key]);
+  const key = JSON.stringify([s?.provider, s?.anthropic_api_key, s?.bedrock_region, s?.aws_access_key_id, s?.aws_secret_access_key, s?.bedrock_api_key]);
   if (key === clientKey) return;
   clientKey = key;
   anthropic = s?.provider === 'anthropic' && s.anthropic_api_key ? new Anthropic({ apiKey: s.anthropic_api_key, timeout: 30_000, maxRetries: 1 }) : null;
@@ -65,9 +67,12 @@ export async function loadAiSettings(db: SupabaseClient, force = false): Promise
     s?.provider === 'bedrock' && s.bedrock_region
       ? new BedrockRuntimeClient({
           region: s.bedrock_region,
-          ...(s.aws_access_key_id && s.aws_secret_access_key
-            ? { credentials: { accessKeyId: s.aws_access_key_id, secretAccessKey: s.aws_secret_access_key } }
-            : {}),
+          // A Bedrock API key is sent as a bearer token; otherwise IAM keys (or the environment).
+          ...(s.bedrock_api_key
+            ? { token: { token: s.bedrock_api_key }, authSchemePreference: ['httpBearerAuth'] }
+            : s.aws_access_key_id && s.aws_secret_access_key
+              ? { credentials: { accessKeyId: s.aws_access_key_id, secretAccessKey: s.aws_secret_access_key } }
+              : {}),
         })
       : null;
 }

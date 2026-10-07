@@ -13,6 +13,7 @@ export type AiSettings = {
   bedrock_model_id: string | null;
   aws_key_hint: string | null;
   aws_secret_set: boolean;
+  bedrock_api_key_hint?: string | null;
   classify_enabled: boolean;
   draft_enabled: boolean;
   ask_on_whatsapp: 'ai' | 'all' | 'none';
@@ -38,6 +39,7 @@ export function AiSettingsForm({ s }: { s: AiSettings }) {
   const [bedrockModel, setBedrockModel] = useState(s.bedrock_model_id ?? '');
   const [awsKeyId, setAwsKeyId] = useState('');
   const [awsSecret, setAwsSecret] = useState('');
+  const [bedrockKey, setBedrockKey] = useState('');
   const [classify, setClassify] = useState(s.classify_enabled);
   const [draft, setDraft] = useState(s.draft_enabled);
   const [ask, setAsk] = useState(s.ask_on_whatsapp);
@@ -71,6 +73,7 @@ export function AiSettingsForm({ s }: { s: AiSettings }) {
         anthropic_key: anthropicKey,
         aws_key_id: awsKeyId,
         aws_secret: awsSecret,
+        bedrock_api_key: bedrockKey,
         clear_anthropic_key: clearAnthropic,
         clear_aws_keys: clearAws,
       });
@@ -79,6 +82,7 @@ export function AiSettingsForm({ s }: { s: AiSettings }) {
         setAnthropicKey('');
         setAwsKeyId('');
         setAwsSecret('');
+        setBedrockKey('');
         setClearAnthropic(false);
         setClearAws(false);
         router.refresh();
@@ -136,19 +140,36 @@ export function AiSettingsForm({ s }: { s: AiSettings }) {
           <Field label="AWS region" htmlFor="ai-region" hint="e.g. ap-south-1 (Mumbai)">
             <Input id="ai-region" value={region} onChange={(e) => setRegion(e.target.value)} />
           </Field>
-          <Field label="Model / inference profile id" htmlFor="ai-bmodel" hint="Copy it from the Bedrock console.">
+          <Field
+            label="Model / inference profile id"
+            htmlFor="ai-bmodel"
+            hint="Bedrock console → Model catalog (or Cross-region inference) → copy the id, e.g. one starting with apac.anthropic.claude… for Mumbai."
+          >
             <Input id="ai-bmodel" value={bedrockModel} onChange={(e) => setBedrockModel(e.target.value)} />
           </Field>
+          <Field
+            label="Bedrock API key (easiest)"
+            htmlFor="ai-bkey"
+            className="sm:col-span-2"
+            hint={
+              s.bedrock_api_key_hint
+                ? `Saved: ••••${s.bedrock_api_key_hint}. Leave empty to keep it.`
+                : 'Bedrock console → API keys → Generate long-term API key. Starts with ABSK. If you use this, leave the two AWS key boxes below empty.'
+            }
+          >
+            <Input id="ai-bkey" type="password" autoComplete="new-password" value={bedrockKey} onChange={(e) => setBedrockKey(e.target.value)} placeholder="ABSK…" />
+          </Field>
+          <p className="text-xs text-ink-muted sm:col-span-2">…or, instead, an IAM access key:</p>
           <Field label="AWS access key id" htmlFor="ai-akid" hint={s.aws_key_hint ? `Saved: ••••${s.aws_key_hint}. Leave empty to keep it.` : 'An IAM user allowed only bedrock:InvokeModel.'}>
             <Input id="ai-akid" autoComplete="off" value={awsKeyId} onChange={(e) => setAwsKeyId(e.target.value)} />
           </Field>
           <Field label="AWS secret access key" htmlFor="ai-secret" hint={s.aws_secret_set ? 'Saved. Leave empty to keep it.' : undefined}>
-            <Input id="ai-secret" type="password" autoComplete="off" value={awsSecret} onChange={(e) => setAwsSecret(e.target.value)} />
+            <Input id="ai-secret" type="password" autoComplete="new-password" value={awsSecret} onChange={(e) => setAwsSecret(e.target.value)} />
           </Field>
-          {s.aws_key_hint || s.aws_secret_set ? (
+          {s.aws_key_hint || s.aws_secret_set || s.bedrock_api_key_hint ? (
             <label className="flex items-center gap-2 sm:col-span-2">
               <input type="checkbox" checked={clearAws} onChange={(e) => setClearAws(e.target.checked)} className="size-4 accent-accent" />
-              Remove the saved AWS keys
+              Remove the saved AWS / Bedrock keys
             </label>
           ) : null}
         </div>
