@@ -157,3 +157,35 @@ describe('lead details in WhatsApp lead messages', () => {
     expect(m!.body.endsWith('(more in Setu)')).toBe(true);
   });
 });
+
+describe('allotting to someone with no phone or no team', () => {
+  beforeEach(async () => {
+    await q(f.db, f.admin, `select public.dv_set_lead_allotter($1, true)`, [f.teacherA]);
+  });
+  const reply = async () => (await outboxTo(f.teacherA)).at(-1)!.body;
+
+  it('no phone: asks for it, saves it on their profile, then allots', async () => {
+    await sq(f.db, `update public.profiles set full_name = 'Vinod Kumar', phone = null where id = $1`, [f.volA2]);
+    await allot(f.teacherA, 2, 'Vinod');
+    expect(await reply()).toMatch(/Vinod Kumar is in Setu but has no phone number\. What is Vinod's WhatsApp number\?/);
+    const id = await write(f.teacherA, '88799 40032');
+    await svc(f.db, `select public.dv_allot_continue($1)`, [id]);
+    expect(await reply()).toMatch(/^Saved \+918879940032 as Vinod Kumar's number\.\n✅ 2 lead\(s\) allotted to Vinod Kumar/);
+    expect((await sq<{ phone: string }>(f.db, `select phone from public.profiles where id = $1`, [f.volA2]))[0]!.phone).toBe('+918879940032');
+    expect(await held(f.volA2)).toBe(2);
+  });
+
+  it("a number that is someone else's is refused", async () => {
+    await sq(f.db, `update public.profiles set full_name = 'Vinod Kumar', phone = null where id = $1`, [f.volA2]);
+    await allot(f.teacherA, 2, 'Vinod');
+    const id = await write(f.teacherA, PHONE[f.volA1]!);
+    await svc(f.db, `select public.dv_allot_continue($1)`, [id]);
+    expect(await reply()).toMatch(/already belongs to someone else/);
+  });
+
+  it('no team: leads come from the allotter\'s team; the profile stays without a team', async () => {
+    await sq(f.db, `update public.profiles set team_id = null where id = $1`, [f.volA1]);
+    expect(await allot(f.teacherA, 2, 'Srikesh')).toMatchObject({ handled: true, assigned: 2 });
+    expect((await sq<{ team_id: string | null }>(f.db, `select team_id from public.profiles where id = $1`, [f.volA1]))[0]!.team_id).toBeNull();
+  });
+});
