@@ -35,7 +35,7 @@ const STATUS: Record<string, { label: string; tone: 'info' | 'accent' | 'warn' |
 export default async function BulkPage() {
   await requireDv('schedule_announcements');
   const supabase = await createClient();
-  const [settings, statuses, courses, teams, { data: campaigns, error }, { data: progress }, { data: optOuts }, { data: account }] = await Promise.all([
+  const [settings, statuses, courses, teams, { data: campaigns, error }, { data: progress }, { data: optOuts }] = await Promise.all([
     getOrgSettings(),
     getStatuses(),
     getCourses(),
@@ -47,7 +47,6 @@ export default async function BulkPage() {
       .limit(30),
     supabase.from('dv_bulk_progress').select('*'),
     supabase.from('dv_opt_outs').select('phone, source, created_at').order('created_at', { ascending: false }).limit(200),
-    supabase.from('wa_account').select('enabled, status').maybeSingle(),
   ]);
   if (error) return <Alert>Run the latest database migration to use bulk messages.</Alert>;
   const prog = new Map(((progress ?? []) as Progress[]).map((p) => [p.campaign_id, p]));
@@ -55,12 +54,6 @@ export default async function BulkPage() {
 
   return (
     <div className="space-y-6">
-      <Alert tone="warn">
-        WhatsApp can ban a number that messages many people who do not know it. Send only to people who expect to hear from you, keep the pace slow, and keep
-        the STOP line. Sending happens only while the number is linked and Digital Volunteer is on
-        {account && (account.status !== 'connected' || !account.enabled) ? ' (right now it is not, so nothing will go out)' : ''}.
-      </Alert>
-
       <NewBulk
         statuses={statuses.filter((s) => s.is_active).map((s) => ({ id: s.code, label: s.label }))}
         courses={courses.map((c) => ({ id: c.id, label: c.name }))}
