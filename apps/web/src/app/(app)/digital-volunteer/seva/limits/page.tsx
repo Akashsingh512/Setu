@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Card, CardHeader } from '@/components/ui';
 import { requireDv } from '@/lib/dv';
 import { createClient } from '@/lib/supabase/server';
-import { AllotMessages, ApproverToggle, DefaultsForm, LeadAllotters, VolunteerLimitRow, type AllotterCandidate, type LimitRow } from './limit-forms';
+import { AllotMessages, ApproverToggle, LeadDetailsSwitches, DefaultsForm, LeadAllotters, VolunteerLimitRow, type AllotterCandidate, type LimitRow } from './limit-forms';
 
 export const metadata: Metadata = { title: 'Seva & allotting' };
 
@@ -84,6 +84,15 @@ export default async function SevaLimitsPage() {
           ) : (
             <p className="px-5 py-4 text-sm text-ink-muted">Run the latest database migration to use this.</p>
           )}
+        </Card>
+      ) : null}
+      {settings && 'send_notes' in settings ? (
+        <Card>
+          <CardHeader
+            title="Lead details in WhatsApp messages"
+            description="When leads are sent on WhatsApp (seva requests, and 'Allot N leads to …'), also include under each lead:"
+          />
+          <LeadDetailsSwitches notes={!!settings.send_notes} history={!!settings.send_history} />
         </Card>
       ) : null}
       {defAllot && defWelcome ? (

@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react';
 import { FormMessage, type ActionState } from '@/components/form';
 import { Badge, Button, Field, Input, Select, Textarea } from '@/components/ui';
-import { saveAllotMessages, saveSevaLimit, saveSevaSettings, setLeadAllotter, setWhatsAppApprover } from '../../seva-actions';
+import { saveAllotMessages, saveLeadDetails, saveSevaLimit, saveSevaSettings, setLeadAllotter, setWhatsAppApprover } from '../../seva-actions';
 
 const toNum = (v: string): number | null => (v.trim() === '' ? null : Number(v));
 const show = (v: number | null) => (v === null ? '' : String(v));
@@ -293,6 +293,28 @@ export function AllotMessages({
           Back to the standard text
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Whether leads sent on WhatsApp (seva requests, allotting) carry their notes and history. */
+export function LeadDetailsSwitches({ notes, history }: { notes: boolean; history: boolean }) {
+  const [n, setN] = useState(notes);
+  const [h, setH] = useState(history);
+  const [state, setState] = useState<ActionState | undefined>();
+  const [pending, start] = useTransition();
+  const save = (nn: boolean, hh: boolean) => start(async () => setState(await saveLeadDetails(nn, hh)));
+  return (
+    <div className="flex flex-col gap-2 p-5 text-sm">
+      <label className="flex items-center gap-2">
+        <input type="checkbox" className="size-4 accent-accent" checked={n} disabled={pending} onChange={(e) => (setN(e.target.checked), save(e.target.checked, h))} />
+        Meeting notes (where and when they were met, who met them, the notes)
+      </label>
+      <label className="flex items-center gap-2">
+        <input type="checkbox" className="size-4 accent-accent" checked={h} disabled={pending} onChange={(e) => (setH(e.target.checked), save(n, e.target.checked))} />
+        Follow-up history (the last 3 calls, notes and comments)
+      </label>
+      <FormMessage state={state} />
     </div>
   );
 }

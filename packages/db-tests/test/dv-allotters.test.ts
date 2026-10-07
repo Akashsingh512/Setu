@@ -136,3 +136,24 @@ describe('editable allot messages', () => {
     expect(sent!.body).toMatch(/^Hari Om Srikesh! .+ sent 1:\n• .+\(L-\d+\)\nCall in \d+h\.$/);
   });
 });
+
+describe('lead details in WhatsApp lead messages', () => {
+  it('off by default; when on, notes and history go under each lead (allotting and seva requests)', async () => {
+    await q(f.db, f.admin, `select public.dv_set_lead_allotter($1, true)`, [f.teacherA]);
+    await sq(f.db, `update public.leads set meeting_notes = 'Met near the temple' where team_id = $1`, [f.teamA]);
+    await allot(f.teacherA, 1, 'Srikesh');
+    expect((await outboxTo(f.volA1))[0]!.body).not.toContain('Notes:');
+
+    await expect(q(f.db, f.volA1, `select public.dv_save_lead_details(true, true)`)).rejects.toThrow(/Not authorised/);
+    await q(f.db, f.admin, `select public.dv_save_lead_details(true, true)`);
+    await allot(f.teacherA, 1, 'Srikesh');
+    expect((await outboxTo(f.volA1)).at(-1)!.body).toMatch(/\(L-\d+\)\n {3}Notes: Met near the temple\n/);
+  });
+
+  it('a message over the WhatsApp limit is cut, not refused', async () => {
+    await sq(f.db, `insert into public.wa_outbox (chat_jid, kind, body, status) values ('1@s.whatsapp.net', 'direct', repeat('x', 5000), 'queued')`);
+    const [m] = await sq<{ body: string }>(f.db, `select body from public.wa_outbox where chat_jid = '1@s.whatsapp.net'`);
+    expect(m!.body.length).toBeLessThanOrEqual(4000);
+    expect(m!.body.endsWith('(more in Setu)')).toBe(true);
+  });
+});
