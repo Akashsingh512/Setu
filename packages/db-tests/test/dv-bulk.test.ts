@@ -37,7 +37,7 @@ describe('bulk messages', () => {
     expect(n).toBeGreaterThanOrEqual(2);
     expect(n).toBeLessThanOrEqual(5); // 2 minutes at 30-60 s apart
     const rows = await queued();
-    expect(rows[0]!.body).toBe('Namaste Person, see you!\n\nReply STOP to stop these messages.');
+    expect(rows[0]!.body).toBe('Namaste Person, see you!'); // reads like a person wrote it: no STOP line
     for (let i = 1; i < rows.length; i++) {
       const gap = (Date.parse(rows[i]!.send_after) - Date.parse(rows[i - 1]!.send_after)) / 1000;
       expect(gap).toBeGreaterThanOrEqual(30);
@@ -65,6 +65,16 @@ describe('bulk messages', () => {
       await create(f.admin, people(3), { window_start: past, window_end: pastEnd });
       expect(await tick()).toBe(0);
     }
+  });
+
+  it('sends only on the chosen days', async () => {
+    const today = ((new Date().getUTCDay() + 6) % 7) + 1; // 1 = Monday, in UTC like the test org
+    const notToday = [1, 2, 3, 4, 5, 6, 7].filter((d) => d !== today);
+    await create(f.admin, people(3), { send_days: notToday });
+    expect(await tick()).toBe(0);
+    const [c] = await sq<{ next_send_at: string; send_days: number[] }>(f.db, `select next_send_at, send_days from public.dv_bulk_campaigns`);
+    expect(c!.send_days).toEqual(notToday);
+    expect(new Date(c!.next_send_at).getUTCDate()).not.toBe(new Date().getUTCDate());
   });
 
   it('nothing is queued while WhatsApp is not connected; pause, resume and cancel', async () => {

@@ -23,6 +23,7 @@ const bulkSchema = z.object({
     .regex(/^announcements\/[A-Za-z0-9._/-]+$/)
     .nullable(),
   addStopLine: z.boolean(),
+  sendDays: z.array(z.number().int().min(1).max(7)).min(1, 'Choose at least one day').max(7),
   leads: z.object({ status: opt, course: opt, team: opt, assignee: opt, from: opt, to: opt }).nullable(),
   members: z.object({ role: z.enum(['volunteer', 'teacher', 'all']), team: opt }).nullable(),
   pasted: z.string().max(400_000),
@@ -118,6 +119,7 @@ function campaignJson(input: z.output<typeof bulkSchema>, tz: string, audience: 
     body: input.body,
     poster_path: input.posterPath,
     add_stop_line: input.addStopLine,
+    send_days: input.sendDays.length === 7 ? null : [...new Set(input.sendDays)],
     audience,
     start_at: p.startAt ? localInputToIso(p.startAt, tz) : null,
     min_gap_s: p.minGap,

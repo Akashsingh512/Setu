@@ -36,7 +36,9 @@ export default async function BulkDetailPage({ params }: { params: Promise<{ id:
   ]);
   if (!c) notFound();
   const tz = settings.default_timezone;
-  const pace = `${c.min_gap_s}–${c.max_gap_s} s apart, typing ${c.typing_min_s}–${c.typing_max_s} s, up to ${c.daily_cap} a day${
+  const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const days = Array.isArray(c.send_days) && c.send_days.length ? (c.send_days as number[]).map((d) => DAYS[d - 1]).join(', ') : 'every day';
+  const pace = `${days}, ${c.min_gap_s}–${c.max_gap_s} s apart, typing ${c.typing_min_s}–${c.typing_max_s} s, up to ${c.daily_cap} a day${
     c.window_start ? `, ${String(c.window_start).slice(0, 5)}–${String(c.window_end).slice(0, 5)}` : ''
   }${c.batch_size ? `, a ${c.batch_pause_min} min break after every ${c.batch_size}` : ''}`;
 

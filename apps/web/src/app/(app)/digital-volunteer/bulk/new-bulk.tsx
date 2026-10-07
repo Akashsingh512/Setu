@@ -21,7 +21,8 @@ export function NewBulk({ statuses, courses, teams }: { statuses: Option[]; cour
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('Namaste {{name}} 🙏\n\n');
   const [poster, setPoster] = useState<string | null>(null);
-  const [stopLine, setStopLine] = useState(true);
+  const [startMode, setStartMode] = useState<'now' | 'later'>('now');
+  const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
 
   const [useLeads, setUseLeads] = useState(false);
   const [leads, setLeads] = useState({ status: '', course: '', team: '', assignee: '', from: '', to: '' });
@@ -47,7 +48,8 @@ export function NewBulk({ statuses, courses, teams }: { statuses: Option[]; cour
     title,
     body,
     posterPath: poster,
-    addStopLine: stopLine,
+    addStopLine: false,
+    sendDays: days,
     leads: useLeads ? leads : null,
     members: useMembers ? members : null,
     pasted,
@@ -61,7 +63,7 @@ export function NewBulk({ statuses, courses, teams }: { statuses: Option[]; cour
       windowEnd: pace.windowEnd,
       batchSize: num(pace.batchSize, 0),
       batchPause: num(pace.batchPause, 0),
-      startAt: pace.startAt,
+      startAt: startMode === 'later' ? pace.startAt : '',
     },
   });
 
@@ -109,10 +111,6 @@ export function NewBulk({ statuses, courses, teams }: { statuses: Option[]; cour
             >
               <Textarea id="b-body" rows={9} value={body} maxLength={3900} onChange={(e) => (setBody(e.target.value), changed())} />
             </Field>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" className="size-4 accent-accent" checked={stopLine} onChange={(e) => (setStopLine(e.target.checked), changed())} />
-              Add &quot;Reply STOP to stop these messages.&quot; (recommended)
-            </label>
             <Field label="Poster (optional)" htmlFor="b-poster">
               <PosterInput id="b-poster" folder="announcements" currentPath={null} currentUrl={null} onChange={(p) => setPoster(p)} />
             </Field>
@@ -220,9 +218,78 @@ export function NewBulk({ statuses, courses, teams }: { statuses: Option[]; cour
           </div>
         </div>
 
+        <div className="rounded-xl border border-line p-4">
+          <p className="mb-3 text-sm font-medium">When to send</p>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <fieldset className="flex flex-col gap-2 text-sm">
+              <legend className="mb-1 text-xs font-medium text-ink-muted">Start</legend>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="b-start-mode"
+                  className="size-4 accent-accent"
+                  checked={startMode === 'now'}
+                  onChange={() => (setStartMode('now'), changed())}
+                />
+                Now
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="b-start-mode"
+                  className="size-4 accent-accent"
+                  checked={startMode === 'later'}
+                  onChange={() => (setStartMode('later'), changed())}
+                />
+                At a date and time
+              </label>
+              {startMode === 'later' ? (
+                <Input
+                  aria-label="Start date and time"
+                  type="datetime-local"
+                  value={pace.startAt}
+                  onChange={(e) => (setPace({ ...pace, startAt: e.target.value }), changed())}
+                />
+              ) : null}
+            </fieldset>
+            <fieldset className="text-sm">
+              <legend className="mb-2 text-xs font-medium text-ink-muted">Only on these days</legend>
+              <div className="flex flex-wrap gap-1.5">
+                {(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const).map((d, i) => {
+                  const on = days.includes(i + 1);
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => {
+                        setDays((cur) => (on ? (cur.length > 1 ? cur.filter((x) => x !== i + 1) : cur) : [...cur, i + 1].sort()));
+                        changed();
+                      }}
+                      className={cn(
+                        'min-h-9 rounded-md border px-2.5 text-sm',
+                        on ? 'border-accent bg-accent-soft font-medium text-accent' : 'border-line text-ink-muted hover:bg-canvas',
+                      )}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+            <Field label="Only between" htmlFor="b-from-h" hint="Empty = any time of day">
+              <div className="flex items-center gap-1">
+                <Input id="b-from-h" type="time" value={pace.windowStart} onChange={(e) => (setPace({ ...pace, windowStart: e.target.value }), changed())} />
+                <span className="text-ink-muted">–</span>
+                <Input aria-label="Until" type="time" value={pace.windowEnd} onChange={(e) => (setPace({ ...pace, windowEnd: e.target.value }), changed())} />
+              </div>
+            </Field>
+          </div>
+        </div>
+
         <div>
           <p className="mb-2 text-sm font-medium">Pace (so it looks like a person, not a robot)</p>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Gap between messages (s)" htmlFor="b-gap">
               <div className="flex items-center gap-1">
                 <Input id="b-gap" type="number" min={5} value={pace.minGap} onChange={(e) => (setPace({ ...pace, minGap: e.target.value }), changed())} />
@@ -267,13 +334,6 @@ export function NewBulk({ statuses, courses, teams }: { statuses: Option[]; cour
                 onChange={(e) => (setPace({ ...pace, dailyCap: e.target.value }), changed())}
               />
             </Field>
-            <Field label="Sending hours" htmlFor="b-from-h" hint="Empty = any time">
-              <div className="flex items-center gap-1">
-                <Input id="b-from-h" type="time" value={pace.windowStart} onChange={(e) => (setPace({ ...pace, windowStart: e.target.value }), changed())} />
-                <span className="text-ink-muted">–</span>
-                <Input aria-label="Until" type="time" value={pace.windowEnd} onChange={(e) => (setPace({ ...pace, windowEnd: e.target.value }), changed())} />
-              </div>
-            </Field>
             <Field label="Break after every … messages" htmlFor="b-batch" hint="0 = no breaks">
               <div className="flex items-center gap-1">
                 <Input
@@ -293,9 +353,6 @@ export function NewBulk({ statuses, courses, teams }: { statuses: Option[]; cour
                 />
                 <span className="text-xs text-ink-muted">min</span>
               </div>
-            </Field>
-            <Field label="Start" htmlFor="b-start" hint="Empty = now">
-              <Input id="b-start" type="datetime-local" value={pace.startAt} onChange={(e) => (setPace({ ...pace, startAt: e.target.value }), changed())} />
             </Field>
           </div>
         </div>
