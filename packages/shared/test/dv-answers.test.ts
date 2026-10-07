@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCourseAnswer, detectIntent, extractRequestedCount, matchCourses, matchRule, parseAllotCommand, parseApprovalReply, parseDraftReply, unknownDvPlaceholders, type AnswerCourse, type AnswerSession, type DvRule } from '../src/dv-answers';
+import { buildCourseAnswer, detectIntent, extractRequestedCount, matchCourses, isGreeting, matchRule, parseAllotCommand, parseApprovalReply, parseDraftReply, unknownDvPlaceholders, type AnswerCourse, type AnswerSession, type DvRule } from '../src/dv-answers';
 
 describe('detectIntent', () => {
   it.each([
@@ -210,5 +210,12 @@ describe('parseAllotCommand', () => {
     expect(parseAllotCommand('I want to do seva, share numbers')).toBeNull();
     expect(parseAllotCommand('allot 99 leads to X')).toBeNull();
     expect(parseAllotCommand('L-000002 called, coming Sunday')).toBeNull();
+  });
+});
+
+describe('isGreeting', () => {
+  it('greetings only', () => {
+    for (const t of ['hello', 'Hi', 'hii 🙏', 'Jai Gurudev', 'Namaste ji', 'good morning', 'Hello there!', 'hari om']) expect(isGreeting(t)).toBe(true);
+    for (const t of ['hello, when is the next program?', 'hi I want to do seva', 'L-000002 called', '']) expect(isGreeting(t)).toBe(false);
   });
 });

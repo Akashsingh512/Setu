@@ -20,6 +20,8 @@ function preview(kind: DvTemplateKind, body: string, courses: AnswerCourse[], se
   const first = sessions[0];
   const firstCourse = first ? courses.find((c) => c.id === first.course_id) : undefined;
   switch (kind) {
+    case 'greeting':
+      return body;
     case 'course_details':
       return first && firstCourse ? buildCourseAnswer({ text: firstCourse.name, courses, sessions: [first], templates, timeZone }).body : null;
     case 'course_list':

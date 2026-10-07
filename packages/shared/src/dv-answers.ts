@@ -98,6 +98,17 @@ export function isOptOut(text: string | null | undefined): boolean {
   return !!text && /^\s*(stop|unsubscribe|stop all|stop messages)\s*[.!]*\s*$/i.test(text);
 }
 
+/** A message that is only a greeting: "hello", "hi 🙏", "Jai Gurudev", "good morning". */
+export function isGreeting(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const t = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return /^(hi+|hello+|helo|hey+|hii+|namaste|namaskar|namaskaram|jai gurudev|jai guru dev|jgd|hari om|good (morning|afternoon|evening|night)|gm|hi there|hello there)( (ji|sir|madam|mam|maam|everyone|all|team|there))?( (namaste|jai gurudev))?$/.test(t);
+}
+
 export interface AllotCommand {
   /** null = the default number per request. */
   count: number | null;
@@ -148,7 +159,7 @@ export function detectIntent(text: string | null | undefined): IntentResult {
 // ---------------------------------------------------------------------------
 // Answers
 // ---------------------------------------------------------------------------
-export const DV_TEMPLATE_KINDS = ['course_details', 'course_list', 'no_upcoming', 'fallback'] as const;
+export const DV_TEMPLATE_KINDS = ['greeting', 'course_details', 'course_list', 'no_upcoming', 'fallback'] as const;
 export type DvTemplateKind = (typeof DV_TEMPLATE_KINDS)[number];
 
 export const DV_PLACEHOLDERS = [
@@ -158,6 +169,7 @@ export const DV_PLACEHOLDERS = [
 export type DvPlaceholder = (typeof DV_PLACEHOLDERS)[number];
 
 export const DV_TEMPLATE_INFO: Record<DvTemplateKind, { label: string; when: string }> = {
+  greeting: { label: 'Welcome', when: 'Someone says hello, hi, namaste or Jai Gurudev in a private chat (at most once every 6 hours per chat).' },
   course_details: { label: 'One program', when: 'The question is about one course and it has an upcoming session.' },
   course_list: { label: 'List of programs', when: 'No course was named and several sessions are coming up.' },
   no_upcoming: { label: 'No upcoming session', when: 'The course exists but nothing is scheduled yet.' },
@@ -165,6 +177,16 @@ export const DV_TEMPLATE_INFO: Record<DvTemplateKind, { label: string; when: str
 };
 
 export const DEFAULT_DV_TEMPLATES: Record<DvTemplateKind, string> = {
+  greeting: `Jai Gurudev 🙏
+
+Thank you for reaching out to The Art of Living. How can we help you?
+
+You can ask about:
+• Upcoming programs and their dates
+• Courses for stress, sleep, breathing and meditation
+• Satsangs and events near you
+
+Just type your question.`,
   course_details: `Namaste 🙏
 
 Thank you for your interest in our upcoming program.

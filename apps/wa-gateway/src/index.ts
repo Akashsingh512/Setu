@@ -417,7 +417,7 @@ async function onMessage(s: WASocket, m: WAMessage) {
   // senderKnown: did we learn the sender's phone number? (WhatsApp often hides it behind a private id.)
   log.info({ id: data, chat, senderKnown: !!phone }, 'message stored');
   const groupId = group ? ((await db.from('wa_groups').select('id').eq('jid', chat).maybeSingle()).data?.id ?? null) : null;
-  await processMessage(db, { id: data as string, groupId, text }, log).catch((e: Error) =>
+  await processMessage(db, { id: data as string, groupId, chatJid: chat, text }, log).catch((e: Error) =>
     log.warn({ err: e.message, id: data }, 'processing failed - left for a person'),
   );
 }

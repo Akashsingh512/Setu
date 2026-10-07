@@ -9,9 +9,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   buildCourseAnswer,
+  DEFAULT_DV_TEMPLATES,
   detectIntent,
   extractRequestedCount,
   matchRule,
+  isGreeting,
   isOptOut,
   parseAllotCommand,
   parseFollowUpTime,
@@ -112,7 +114,7 @@ function factsFor(data: Data, sessions: Data['sessions']): string {
 
 export async function processMessage(
   db: SupabaseClient,
-  msg: { id: string; groupId: string | null; text: string | null },
+  msg: { id: string; groupId: string | null; chatJid?: string; text: string | null },
   log: { warn: (o: object, m: string) => void; info: (o: object, m: string) => void },
 ): Promise<void> {
   const text = msg.text?.trim() ?? '';
@@ -210,6 +212,7 @@ export async function processMessage(
   let rule: DvRule | null = null;
   let courseHintIds: string[] = [];
   let aiQuestion = false;
+  let greeting: string | null = null;
 
   // 1. Reply rules set up in Setu.
   const hit = matchRule(text, data.rules, where);
@@ -219,6 +222,19 @@ export async function processMessage(
   } else {
     // 2. Built-in keyword detection.
     intent = detectIntent(text).intent;
+    // A plain "hello" in a private chat: the Welcome reply, unless the bot spoke there in the last 6 hours.
+    if (intent === 'none' && !msg.groupId && isGreeting(text)) {
+      const { count } = await db
+        .from('wa_outbox')
+        .select('id', { count: 'exact', head: true })
+        .eq('chat_jid', msg.chatJid ?? '')
+        .eq('auto', true)
+        .gte('created_at', new Date(Date.now() - 6 * 3_600_000).toISOString());
+      if (!count) {
+        intent = 'course_info';
+        greeting = data.templates.greeting || DEFAULT_DV_TEMPLATES.greeting;
+      }
+    }
     // 3. AI for anything still unclear.
     if (intent === 'none' && text && aiClassifyEnabled() && looksLikeQuestion(text)) {
       const ai = await classifyWithAi(text, data.courses.filter((c) => c.is_active), usableRules);
@@ -256,6 +272,9 @@ export async function processMessage(
     } else {
       intent = 'handover';
     }
+  } else if (greeting) {
+    reply = greeting;
+    replyKind = 'greeting';
   } else if (intent === 'course_info') {
     const answer = buildCourseAnswer({ text, courses: data.courses, sessions, templates: data.templates, timeZone: data.timeZone, courseHintIds });
     reply = answer.body;
