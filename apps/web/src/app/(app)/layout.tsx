@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { navForRole, ROLE_LABELS } from '@crm/shared';
 import { requireProfile } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
@@ -20,6 +21,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getDvAccess(),
     getFeatures(),
   ]);
+
+  // Added from WhatsApp with a starter password: choose their own first.
+  if (profile.must_change_password) redirect('/set-password');
 
   const nav = navForRole(profile.role, { digitalVolunteer: dv.isOperator, features });
 

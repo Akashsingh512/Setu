@@ -23,6 +23,8 @@ export interface Profile {
   address: string | null;
   seva_interests: string[];
   show_phone_in_directory?: boolean;
+  /** Set for people added from WhatsApp: they choose their own password first. */
+  must_change_password?: boolean;
   last_login_at: string | null;
   last_seen_at: string | null;
   created_at: string;

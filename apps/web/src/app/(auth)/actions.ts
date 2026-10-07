@@ -2,11 +2,12 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
+import { normalizePhone } from '@crm/shared';
 import type { ActionState } from '@/components/form';
 import { createClient } from '@/lib/supabase/server';
 
 const loginSchema = z.object({
-  email: z.email('Enter a valid email'),
+  email: z.string().trim().min(1, 'Enter your email or mobile number'),
   password: z.string().min(1, 'Enter your password'),
   next: z.string().optional(),
 });
@@ -16,16 +17,28 @@ function safeNext(next: string | undefined): string {
   return next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
 }
 
+/**
+ * Email, or a mobile number: people added from WhatsApp have no email and sign in
+ * with their number (their account address is "<digits>@phone.setu.invalid").
+ */
+function loginEmail(id: string): string | null {
+  if (id.includes('@')) return z.email().safeParse(id).success ? id.toLowerCase() : null;
+  const phone = normalizePhone(id, 'IN');
+  return phone.ok ? `${phone.e164.replace(/\D/g, '')}@phone.setu.invalid` : null;
+}
+
 export async function signIn(_: ActionState | undefined, formData: FormData): Promise<ActionState> {
   const parsed = loginSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
+  const email = loginEmail(parsed.data.email);
+  if (!email) return { error: 'Enter a valid email or mobile number.' };
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithPassword({
-    email: parsed.data.email,
+    email,
     password: parsed.data.password,
   });
-  if (error) return { error: 'Incorrect email or password.' };
+  if (error) return { error: 'Incorrect email / mobile number or password.' };
 
   // select('*') keeps sign-in working even before the approval columns exist.
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
@@ -83,5 +96,7 @@ export async function updatePassword(_: ActionState | undefined, formData: FormD
   const supabase = await createClient();
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
   if (error) return { error: error.message };
+  await supabase.rpc('clear_must_change_password');
+  if (formData.get('first_time') === '1') redirect('/dashboard');
   return { ok: true, message: 'Password updated.' };
 }

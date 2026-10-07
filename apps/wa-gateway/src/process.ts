@@ -156,6 +156,17 @@ export async function processMessage(
     }
   }
 
+  // An allotter answering "What is Akash's number?" / "What is their name?".
+  if (!msg.groupId && text) {
+    const { data: res, error } = await db.rpc('dv_allot_continue', { p_message_id: msg.id });
+    if (error) log.warn({ err: error.message, id: msg.id }, 'allot follow-up failed');
+    else if ((res as { handled?: boolean } | null)?.handled) {
+      const create = (res as { create?: { name: string; phone: string; team_id: string } }).create;
+      if (create) await createVolunteer(db, msg.id, create, log);
+      return;
+    }
+  }
+
   // A lead allotter: "Allot 5 leads to Srikesh". The database checks who may.
   const allot = msg.groupId ? null : parseAllotCommand(text);
   if (allot) {
@@ -269,6 +280,43 @@ export async function processMessage(
   if (error) log.warn({ err: error.message, id: msg.id }, 'could not record intent');
   // e.g. {intent: course_info, status: needs_review, send: pending_approval} = suggestion waiting in the Inbox
   else log.info({ id: msg.id, intent, source, rule: rule?.name, replyKind, result }, 'message analysed');
+}
+
+/** Where people sign in; sent to volunteers an allotter adds. */
+const APP_URL = process.env.SETU_APP_URL ?? 'https://3-108-61-69.sslip.io';
+
+/** First name + "jaigurudev", e.g. "akashjaigurudev". They must change it at first sign-in. */
+export function starterPassword(name: string): string {
+  const first = (name.trim().split(/\s+/)[0] ?? '').toLowerCase().replace(/[^a-z]/g, '');
+  return `${first || 'sevak'}jaigurudev`;
+}
+
+/** An allotter added someone new on WhatsApp: make their sign-in, then finish the allotting. */
+async function createVolunteer(
+  db: SupabaseClient,
+  messageId: string,
+  person: { name: string; phone: string; team_id: string },
+  log: { warn: (o: object, m: string) => void; info: (o: object, m: string) => void },
+) {
+  const password = starterPassword(person.name);
+  const digits = person.phone.replace(/\D/g, '');
+  const { data, error } = await db.auth.admin.createUser({
+    // People added this way sign in with their mobile number (the app maps it to this address).
+    email: `${digits}@phone.setu.invalid`,
+    password,
+    email_confirm: true,
+    app_metadata: { role: 'volunteer', team_id: person.team_id },
+    user_metadata: { full_name: person.name, phone: person.phone },
+  });
+  const { error: doneError } = await db.rpc('dv_allot_created', {
+    p_message_id: messageId,
+    p_profile_id: data?.user?.id ?? null,
+    p_password: password,
+    p_error: error ? (/already/i.test(error.message) ? 'an account with this number already exists' : error.message) : null,
+    p_app_url: APP_URL,
+  });
+  if (error || doneError) log.warn({ err: error?.message ?? doneError?.message, id: messageId }, 'adding a volunteer failed');
+  else log.info({ id: messageId, user: data.user.id }, 'volunteer added by an allotter');
 }
 
 /** Called when courses/templates/rules change in the CRM, so answers are never stale. */
