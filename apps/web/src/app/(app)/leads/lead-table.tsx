@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { Alert, Badge, Button, Card, Select, Textarea } from '@/components/ui';
 import type { LeadStatus } from '@/lib/types';
 import { assignLeads, deleteLeads, idsForFilter, purgeLeads, restoreLeads, unassignLeads, type AssignResult } from './actions';
+import { BriefOptions } from './brief-options';
 import { LeadCards, type LeadCardData, type MessageContext } from './lead-cards';
 
 export interface LeadRow {
@@ -63,6 +64,8 @@ export function LeadTable({
   const [dialog, setDialog] = useState(false);
   const [assignee, setAssignee] = useState('');
   const [note, setNote] = useState('');
+  const [sendNotes, setSendNotes] = useState(true);
+  const [sendHistory, setSendHistory] = useState(true);
   const [result, setResult] = useState<AssignResult | null>(null);
   const [pending, start] = useTransition();
   const closed = useMemo(() => new Set(statuses.filter((s) => s.is_closed).map((s) => s.code)), [statuses]);
@@ -87,7 +90,7 @@ export function LeadTable({
   function confirmAssign() {
     start(async () => {
       const ids = allMatching ? await idsForFilter(filterQuery) : [...selected];
-      const r = await assignLeads({ leadIds: ids, assigneeId: assignee, note: note || undefined });
+      const r = await assignLeads({ leadIds: ids, assigneeId: assignee, note: note || undefined, sendNotes, sendHistory });
       setResult(r);
       if (r.ok) {
         setSelected(new Set());
@@ -144,6 +147,7 @@ export function LeadTable({
                 .
               </>
             ) : null}
+            {result.brief ? ` ${result.brief}` : null}
           </Alert>
         </div>
       ) : result?.ok && result.message ? (
@@ -307,6 +311,7 @@ export function LeadTable({
               </Select>
               {chosen && !chosen.accepting ? <Alert tone="warn">This volunteer has paused new assignments. You can still assign manually.</Alert> : null}
               <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for the volunteer (optional)" maxLength={500} />
+              <BriefOptions notes={sendNotes} history={sendHistory} onNotes={setSendNotes} onHistory={setSendHistory} />
               {volunteers.length === 0 ? <Alert tone="warn">There are no active volunteers. Add one on the Volunteers page.</Alert> : null}
             </div>
             <div className="mt-5 flex justify-end gap-2">

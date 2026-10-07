@@ -5,6 +5,7 @@ import { buildCourseMessage, CALL_OUTCOME_LABELS, CALL_OUTCOMES, chooseMessageCo
 import { FormMessage, SubmitButton, type ActionState } from '@/components/form';
 import { Alert, Button, Card, CardHeader, cn, Field, Input, Select, Textarea } from '@/components/ui';
 import { toLocalInputValue } from '@/lib/format';
+import { BriefOptions } from '../brief-options';
 import type { Course, FollowUp, FollowUpComment, LeadStatus, MessageTemplate, UpcomingSession } from '@/lib/types';
 import {
   addFollowUpComment,
@@ -477,6 +478,8 @@ export function AssignBox({
   registered?: boolean;
 }) {
   const [assignee, setAssignee] = useState('');
+  const [sendNotes, setSendNotes] = useState(true);
+  const [sendHistory, setSendHistory] = useState(true);
   const [msg, setMsg] = useState<{ ok?: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
   const options = volunteers.filter((v) => v.id !== currentAssignee);
@@ -499,12 +502,17 @@ export function AssignBox({
               </option>
             ))}
           </Select>
+          {assignee ? <BriefOptions notes={sendNotes} history={sendHistory} onNotes={setSendNotes} onHistory={setSendHistory} /> : null}
           <Button
             disabled={!assignee || pending}
             onClick={() =>
               start(async () => {
-                const r = await assignLeads({ leadIds: [leadId], assigneeId: assignee });
-                setMsg(r.error ? { text: r.error } : { ok: true, text: r.assigned ? 'Assigned. A new 24-hour deadline has started.' : 'No change.' });
+                const r = await assignLeads({ leadIds: [leadId], assigneeId: assignee, sendNotes, sendHistory });
+                setMsg(
+                  r.error
+                    ? { text: r.error }
+                    : { ok: true, text: r.assigned ? `Assigned. A new 24-hour deadline has started.${r.brief ? ` ${r.brief}` : ''}` : 'No change.' },
+                );
                 setAssignee('');
               })
             }

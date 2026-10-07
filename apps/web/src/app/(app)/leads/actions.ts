@@ -94,9 +94,16 @@ export async function updateLead(leadId: string, _: ActionState | undefined, for
   redirect(`/leads/${leadId}`);
 }
 
-export type AssignResult = ActionState & { assigned?: number; skipped?: { lead_id: string; reason: string }[] };
+export type AssignResult = ActionState & { assigned?: number; skipped?: { lead_id: string; reason: string }[]; brief?: string };
 
-export async function assignLeads(input: { leadIds: string[]; assigneeId: string; note?: string }): Promise<AssignResult> {
+export async function assignLeads(input: {
+  leadIds: string[];
+  assigneeId: string;
+  note?: string;
+  /** Also send the leads to the volunteer's WhatsApp, with these parts. */
+  sendNotes?: boolean;
+  sendHistory?: boolean;
+}): Promise<AssignResult> {
   const parsed = assignLeadsSchema.safeParse({ lead_ids: input.leadIds, assignee_id: input.assigneeId, note: input.note });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
   const supabase = await createClient();
@@ -108,7 +115,23 @@ export async function assignLeads(input: { leadIds: string[]; assigneeId: string
   if (error) return { error: friendlyError(error) };
   revalidatePath('/leads');
   const r = data as { assigned_count: number; skipped: { lead_id: string; reason: string }[] };
-  return { ok: true, assigned: r.assigned_count, skipped: r.skipped };
+  let brief: string | undefined;
+  if (r.assigned_count > 0 && (input.sendNotes || input.sendHistory)) {
+    const skipped = new Set(r.skipped.map((s) => s.lead_id));
+    const { data: b, error: be } = await supabase.rpc('dv_send_assignment_brief', {
+      p_lead_ids: parsed.data.lead_ids.filter((id) => !skipped.has(id)),
+      p_assignee: parsed.data.assignee_id,
+      p_notes: !!input.sendNotes,
+      p_history: !!input.sendHistory,
+    });
+    const res = b as { sent: boolean; reason?: string; messages?: number } | null;
+    brief = be
+      ? 'The WhatsApp message could not be sent.'
+      : res?.sent
+        ? 'Sent to them on WhatsApp.'
+        : `Not sent on WhatsApp: ${res?.reason ?? 'unknown reason'}.`;
+  }
+  return { ok: true, assigned: r.assigned_count, skipped: r.skipped, brief };
 }
 
 /** For "select all matching the filter": resolve ids server-side through RLS. */
