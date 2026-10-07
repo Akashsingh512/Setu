@@ -62,6 +62,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
 
   const groupName = new Map((groups.data ?? []).map((g) => [g.jid as string, g.name as string]));
   const chats = new Map<string, { last: Msg; title: string; review: number }>();
+  const chatNames = new Map<string, string>(); // the open chat, when it is not in the recent list
   for (const m of (recent.data ?? []) as Msg[]) {
     const entry = chats.get(m.chat_jid);
     const title = groupName.get(m.chat_jid) ?? (m.direction === 'in' ? m.sender_name || (m.sender_phone ? formatPhone(m.sender_phone) : 'Unknown') : '');
@@ -71,6 +72,33 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       if (m.status === 'needs_review') entry.review += 1;
     }
   }
+  // Chats Setu started (no incoming message yet): name them from Setu itself, by the
+  // number in the chat id (a member first, then a lead), or a remembered sender.
+  const untitled = [...chats.entries()].filter(([jid, c]) => !c.title && !jid.endsWith('@g.us')).map(([jid]) => jid);
+  if (chat && !chat.endsWith('@g.us') && !chats.get(chat)?.title && !untitled.includes(chat)) untitled.push(chat);
+  if (untitled.length) {
+    const phones = untitled.filter((j) => j.endsWith('@s.whatsapp.net')).map((j) => `+${j.split('@')[0]}`);
+    const lids = untitled.filter((j) => !j.endsWith('@s.whatsapp.net'));
+    const [members, leadsByPhone, links] = await Promise.all([
+      phones.length ? supabase.from('profiles').select('full_name, phone').in('phone', phones) : Promise.resolve({ data: [] }),
+      phones.length ? supabase.from('leads').select('full_name, phone').in('phone', phones).is('merged_into_id', null) : Promise.resolve({ data: [] }),
+      lids.length ? supabase.from('dv_sender_links').select('sender_jid, profiles(full_name)').in('sender_jid', lids) : Promise.resolve({ data: [] }),
+    ]);
+    const byPhone = new Map<string, string>();
+    for (const l of (leadsByPhone.data ?? []) as { full_name: string; phone: string }[]) byPhone.set(l.phone, l.full_name);
+    for (const p of (members.data ?? []) as { full_name: string; phone: string }[]) if (p.full_name) byPhone.set(p.phone, p.full_name);
+    const byLid = new Map(
+      ((links.data ?? []) as unknown as { sender_jid: string; profiles: { full_name: string } | null }[]).map((l) => [l.sender_jid, l.profiles?.full_name ?? '']),
+    );
+    for (const jid of untitled) {
+      const phone = jid.endsWith('@s.whatsapp.net') ? `+${jid.split('@')[0]}` : null;
+      const name = (phone ? byPhone.get(phone) : byLid.get(jid)) || (phone ? formatPhone(phone) : '');
+      const entry = chats.get(jid);
+      if (entry && name) entry.title = name;
+      else if (!entry && name) chatNames.set(jid, name);
+    }
+  }
+
   const messages = ((thread.data ?? []) as Msg[]).reverse();
   const leadIds = [...new Set(messages.map((m) => m.lead_id).filter(Boolean))] as string[];
   const { data: leads } = leadIds.length ? await supabase.from('leads').select('id, full_name, lead_code').in('id', leadIds) : { data: [] };
@@ -83,7 +111,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const lastLeadMessage = new Map<string, string>();
   for (const m of messages) if (m.direction === 'in' && m.lead_id) lastLeadMessage.set(m.lead_id, m.id);
   const openFollowUps = ((followUps.data ?? []) as FollowUpCandidate[]).filter((f) => lastLeadMessage.has(f.lead_id));
-  const selectedTitle = chat ? (chats.get(chat)?.title ?? groupName.get(chat) ?? chat) : '';
+  const selectedTitle = chat ? chats.get(chat)?.title || chatNames.get(chat) || groupName.get(chat) || chat : '';
 
   return (
     <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
