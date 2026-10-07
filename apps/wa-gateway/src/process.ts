@@ -228,6 +228,10 @@ export async function processMessage(
         else if (ai.intent === 'question') aiQuestion = true;
         else intent = ai.intent;
         courseHintIds = ai.courseIds;
+      } else if (!msg.groupId && text.includes('?')) {
+        // A real question in a private chat that the AI did not place: draft a reply
+        // anyway. A draft always waits for a person, so this never sends by itself.
+        aiQuestion = true;
       }
     }
   }
