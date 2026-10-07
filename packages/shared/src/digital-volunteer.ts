@@ -20,7 +20,7 @@ export const DV_PERMISSION_INFO: Record<DvPermission, { label: string; descripti
   assign_seva: { label: 'Assign seva leads', description: 'Approve seva requests, which assigns leads' },
   update_followups: { label: 'Update follow-ups', description: 'Confirm WhatsApp follow-ups on leads' },
   manage_content: { label: 'Course responses', description: 'Edit the course reply templates' },
-  schedule_announcements: { label: 'Announcements', description: 'Create and approve scheduled announcements' },
+  schedule_announcements: { label: 'Announcements & bulk', description: 'Scheduled announcements to groups, and bulk messages to people' },
   manage_integration: { label: 'Manage integration', description: 'Link or unlink the number, emergency switch' },
   view_audit: { label: 'Reports & audit', description: 'See Digital Volunteer activity and audit logs' },
 };

@@ -21,7 +21,7 @@ export function PosterInput({
   disabled,
 }: {
   id?: string;
-  folder: 'programs' | 'templates';
+  folder: 'programs' | 'templates' | 'announcements';
   name?: string;
   currentPath: string | null;
   /** Signed URL of the current poster, for the preview. */

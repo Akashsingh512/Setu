@@ -12,6 +12,7 @@ import {
   detectIntent,
   extractRequestedCount,
   matchRule,
+  isOptOut,
   parseAllotCommand,
   parseApprovalReply,
   parseDraftReply,
@@ -141,6 +142,16 @@ export async function processMessage(
     if (error) log.warn({ err: error.message, id: msg.id }, 'approval reply failed');
     else if ((data as { handled?: boolean } | null)?.handled) {
       log.info({ id: msg.id, action: decision.action, ref: decision.ref }, 'seva decision from WhatsApp');
+      return;
+    }
+  }
+
+  // "STOP": no more bulk messages to this number.
+  if (!msg.groupId && isOptOut(text)) {
+    const { data: res, error } = await db.rpc('dv_opt_out_by_message', { p_message_id: msg.id });
+    if (error) log.warn({ err: error.message, id: msg.id }, 'opt-out failed');
+    else if ((res as { handled?: boolean } | null)?.handled) {
+      log.info({ id: msg.id }, 'opted out of bulk messages');
       return;
     }
   }

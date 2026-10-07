@@ -425,7 +425,23 @@ async function onMessage(s: WASocket, m: WAMessage) {
 // ---------------------------------------------------------------------------
 // Outgoing messages
 // ---------------------------------------------------------------------------
-type OutboxRow = { id: string; chat_jid: string; body: string | null; media_path: string | null };
+type OutboxRow = { id: string; chat_jid: string; kind: string; body: string | null; media_path: string | null; typing_ms: number | null };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Bulk messages go out like a person sends them: the number is checked first, then
+ * "typing…" shows for the time the pacer chose, then the message is sent.
+ */
+async function humanise(s: WASocket, row: OutboxRow) {
+  if (row.kind !== 'bulk') return;
+  const [check] = (await s.onWhatsApp(row.chat_jid)) ?? [];
+  if (!check?.exists) throw new Error('This number is not on WhatsApp');
+  await s.presenceSubscribe(row.chat_jid).catch(() => {});
+  await s.sendPresenceUpdate('composing', row.chat_jid).catch(() => {});
+  await sleep(row.typing_ms ?? 3000);
+  await s.sendPresenceUpdate('paused', row.chat_jid).catch(() => {});
+}
 let sending = false;
 
 /** Announcement posters live in the private "dv-posters" bucket (service role reads them). */
@@ -443,6 +459,7 @@ async function drainOutbox() {
     if (error) throw new Error(error.message);
     for (const row of (data ?? []) as OutboxRow[]) {
       try {
+        await humanise(sock, row);
         const sent = row.media_path
           ? await sock.sendMessage(row.chat_jid, { image: await downloadPoster(row.media_path), caption: row.body ?? undefined })
           : await sock.sendMessage(row.chat_jid, { text: row.body ?? '' });

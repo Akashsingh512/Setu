@@ -93,6 +93,11 @@ export function parseApprovalReply(text: string | null | undefined): ApprovalRep
   return null;
 }
 
+/** "STOP" / "unsubscribe" on its own: the sender wants no more bulk messages. */
+export function isOptOut(text: string | null | undefined): boolean {
+  return !!text && /^\s*(stop|unsubscribe|stop all|stop messages)\s*[.!]*\s*$/i.test(text);
+}
+
 export interface AllotCommand {
   /** null = the default number per request. */
   count: number | null;
