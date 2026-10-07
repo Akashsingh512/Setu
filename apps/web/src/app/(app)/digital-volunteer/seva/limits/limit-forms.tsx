@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react';
 import { FormMessage, type ActionState } from '@/components/form';
 import { Badge, Button, Field, Input, Select, Textarea } from '@/components/ui';
-import { saveAllotMessages, saveLeadDetails, saveSevaLimit, saveSevaSettings, setLeadAllotter, setWhatsAppApprover } from '../../seva-actions';
+import { saveAllotMessages, saveFollowupReminder, saveLeadDetails, saveSevaLimit, saveSevaSettings, setLeadAllotter, setWhatsAppApprover } from '../../seva-actions';
 
 const toNum = (v: string): number | null => (v.trim() === '' ? null : Number(v));
 const show = (v: number | null) => (v === null ? '' : String(v));
@@ -314,6 +314,24 @@ export function LeadDetailsSwitches({ notes, history }: { notes: boolean; histor
         <input type="checkbox" className="size-4 accent-accent" checked={h} disabled={pending} onChange={(e) => (setH(e.target.checked), save(n, e.target.checked))} />
         Follow-up history (the last 3 calls, notes and comments)
       </label>
+      <FormMessage state={state} />
+    </div>
+  );
+}
+
+/** Minutes before a follow-up that its scheduler gets a WhatsApp reminder (0 = none). */
+export function FollowupReminder({ minutes }: { minutes: number }) {
+  const [v, setV] = useState(String(minutes));
+  const [state, setState] = useState<ActionState | undefined>();
+  const [pending, start] = useTransition();
+  return (
+    <div className="flex flex-wrap items-end gap-3 p-5 text-sm">
+      <Field label="Remind this many minutes before" htmlFor="fu-min" hint="0 = no WhatsApp reminders">
+        <Input id="fu-min" type="number" min={0} max={1440} value={v} onChange={(e) => setV(e.target.value)} className="w-32" />
+      </Field>
+      <Button disabled={pending} onClick={() => start(async () => setState(await saveFollowupReminder(Number(v))))}>
+        Save
+      </Button>
       <FormMessage state={state} />
     </div>
   );

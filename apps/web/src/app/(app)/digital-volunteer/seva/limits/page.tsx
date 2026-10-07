@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Card, CardHeader } from '@/components/ui';
 import { requireDv } from '@/lib/dv';
 import { createClient } from '@/lib/supabase/server';
-import { AllotMessages, ApproverToggle, LeadDetailsSwitches, DefaultsForm, LeadAllotters, VolunteerLimitRow, type AllotterCandidate, type LimitRow } from './limit-forms';
+import { AllotMessages, ApproverToggle, FollowupReminder, LeadDetailsSwitches, DefaultsForm, LeadAllotters, VolunteerLimitRow, type AllotterCandidate, type LimitRow } from './limit-forms';
 
 export const metadata: Metadata = { title: 'Seva & allotting' };
 
@@ -84,6 +84,15 @@ export default async function SevaLimitsPage() {
           ) : (
             <p className="px-5 py-4 text-sm text-ink-muted">Run the latest database migration to use this.</p>
           )}
+        </Card>
+      ) : null}
+      {settings && 'followup_wa_minutes' in settings ? (
+        <Card>
+          <CardHeader
+            title="Follow-up reminders on WhatsApp"
+            description="Before each follow-up (scheduled in Setu, or on WhatsApp like 'Vimala follow up tomorrow 5pm'), the person who scheduled it gets a WhatsApp reminder with the lead's name, number and last note."
+          />
+          <FollowupReminder minutes={Number(settings.followup_wa_minutes)} />
         </Card>
       ) : null}
       {settings && 'send_notes' in settings ? (

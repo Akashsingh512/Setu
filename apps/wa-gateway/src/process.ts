@@ -14,6 +14,7 @@ import {
   matchRule,
   isOptOut,
   parseAllotCommand,
+  parseFollowUpTime,
   parseApprovalReply,
   parseDraftReply,
   type AnswerCourse,
@@ -181,7 +182,14 @@ export async function processMessage(
   // A volunteer writing privately about one of their own leads ("L-000002 called...",
   // or the lead's name): saved as a note on that lead. The database checks it all.
   if (!msg.groupId && text) {
-    const { data: note, error } = await db.rpc('dv_volunteer_lead_note', { p_message_id: msg.id });
+    // "… follow up tomorrow 5pm": the time asked for, in the organisation's time zone.
+    const followUpAt = parseFollowUpTime(text, new Date(), (await loadData(db)).timeZone);
+    let { data: note, error } = await db.rpc(
+      'dv_volunteer_lead_note',
+      followUpAt ? { p_message_id: msg.id, p_follow_up_at: followUpAt.toISOString() } : { p_message_id: msg.id },
+    );
+    // Database not updated yet: save it as a comment at least.
+    if (error && followUpAt) ({ data: note, error } = await db.rpc('dv_volunteer_lead_note', { p_message_id: msg.id }));
     if (error) log.warn({ err: error.message, id: msg.id }, 'lead note check failed');
     else if ((note as { handled?: boolean } | null)?.handled) {
       log.info({ id: msg.id, lead: (note as { lead_id?: string }).lead_id }, 'volunteer comment on a lead');

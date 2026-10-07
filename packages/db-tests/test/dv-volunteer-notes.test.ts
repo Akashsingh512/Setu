@@ -48,7 +48,7 @@ describe('follow-up comments from WhatsApp', () => {
     const code = await codeOf(priya);
     const r = await write(f.volA1, `${code} called, she will come on Sunday`);
     expect(r).toMatchObject({ handled: true, lead_id: priya });
-    expect(r.reply).toBe(`✅ Comment added to Priya Verma (${code}). There is no follow-up scheduled for this lead.`);
+    expect(r.reply).toContain(`✅ Comment added to Priya Verma (${code}). There is no follow-up scheduled for this lead.`);
     expect(await comments(priya)).toEqual([{ body: `${code} called, she will come on Sunday`, author_id: f.volA1, source: 'whatsapp', follow_up_id: null }]);
     expect(await sq(f.db, `select type from public.lead_activities where lead_id = $1 and type = 'follow_up_comment'`, [priya])).toHaveLength(1);
     expect(await sq(f.db, `select body from public.wa_outbox where chat_jid = $1`, [jidOf(PHONE[f.volA1]!)])).toEqual([{ body: r.reply }]);
@@ -102,5 +102,39 @@ describe('follow-up comments in Setu', () => {
     await expect(q(f.db, f.volA2, `select public.add_follow_up_comment($1, null, 'x')`, [priya])).rejects.toThrow(/no longer have access/);
     expect(await q(f.db, f.volA2, `select * from public.follow_up_comments`)).toEqual([]);
     await expect(q(f.db, f.volA1, `insert into public.follow_up_comments (lead_id, body) values ($1, 'x')`, [priya])).rejects.toThrow(/permission denied/);
+  });
+});
+
+describe('scheduling follow-ups and reminders on WhatsApp', () => {
+  const writeWithTime = async (text: string, at: string) => {
+    n += 1;
+    const [m] = await svc<{ id: string }>(f.db, `select public.dv_ingest_message($1, $2, 'in', $1, $3, 'Vol', $4, null, now()) as id`, [
+      jidOf(PHONE[f.volA1]!), `F${n}`, PHONE[f.volA1]!, text,
+    ]);
+    return (await svc<{ r: { handled: boolean; follow_up_id?: string; reply?: string } }>(f.db, `select public.dv_volunteer_lead_note($1, $2) as r`, [m!.id, at]))[0]!.r;
+  };
+
+  it('a time in the message schedules a follow-up, with the message as its comment', async () => {
+    const at = new Date(Date.now() + 26 * 3_600_000).toISOString();
+    const r = await writeWithTime('Priya follow up tomorrow 5pm', at);
+    expect(r.reply).toMatch(/^📅 Follow-up scheduled for Priya Verma \(L-\d+\): .+\. I will remind you 2 minutes before\.$/);
+    const [fu] = await sq<{ owner_id: string; created_by: string; due_at: string }>(f.db, `select owner_id, created_by, due_at from public.follow_ups where id = $1`, [r.follow_up_id]);
+    expect(fu).toMatchObject({ owner_id: f.volA1, created_by: f.volA1 });
+    expect(await comments(priya)).toEqual([expect.objectContaining({ follow_up_id: r.follow_up_id, source: 'whatsapp' })]);
+    expect((await writeWithTime('Priya follow up', new Date(Date.now() - 3_600_000).toISOString())).reply).toMatch(/already passed/);
+  });
+
+  it('a reminder goes to whoever scheduled it, a few minutes before, once', async () => {
+    const soon = new Date(Date.now() + 60_000).toISOString();
+    const r = await writeWithTime('Priya call back in 1 minute', soon);
+    expect(r.follow_up_id).toBeTruthy();
+    expect((await svc<{ n: number }>(f.db, `select public.dv_followup_whatsapp_reminders() as n`))[0]!.n).toBe(1);
+    expect((await svc<{ n: number }>(f.db, `select public.dv_followup_whatsapp_reminders() as n`))[0]!.n).toBe(0);
+    const [msg] = await sq<{ body: string }>(f.db, `select body from public.wa_outbox where idempotency_key = $1`, [`fu-reminder:${r.follow_up_id}`]);
+    expect(msg!.body).toMatch(/^⏰ .+, follow-up at .+\n\nPriya Verma – \+\d+ \(L-\d+\)\nNote: Priya call back in 1 minute/);
+
+    await q(f.db, f.admin, `select public.dv_save_followup_reminder(0)`);
+    await writeWithTime('Priya follow up soon', new Date(Date.now() + 60_000).toISOString());
+    expect((await svc<{ n: number }>(f.db, `select public.dv_followup_whatsapp_reminders() as n`))[0]!.n).toBe(0);
   });
 });

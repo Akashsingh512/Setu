@@ -120,6 +120,15 @@ export async function unlinkSender(senderJid: string): Promise<ActionState> {
   return { ok: true, message: 'Forgotten.' };
 }
 
+export async function saveFollowupReminder(minutes: number): Promise<ActionState> {
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440) return { error: 'Choose between 0 and 1440 minutes.' };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('dv_save_followup_reminder', { p_minutes: minutes });
+  if (error) return { error: friendlyError(error) };
+  revalidatePath('/digital-volunteer/seva/limits');
+  return { ok: true, message: minutes ? `Saved: reminders ${minutes} minute(s) before.` : 'Saved: no WhatsApp reminders.' };
+}
+
 export async function saveLeadDetails(notes: boolean, history: boolean): Promise<ActionState> {
   const supabase = await createClient();
   const { error } = await supabase.rpc('dv_save_lead_details', { p_notes: notes, p_history: history });
