@@ -222,18 +222,10 @@ export async function processMessage(
   } else {
     // 2. Built-in keyword detection.
     intent = detectIntent(text).intent;
-    // A plain "hello" in a private chat: the Welcome reply, unless the bot spoke there in the last 6 hours.
+    // A plain "hello" in a private chat: the Welcome reply. They wrote first, so it is never spam.
     if (intent === 'none' && !msg.groupId && isGreeting(text)) {
-      const { count } = await db
-        .from('wa_outbox')
-        .select('id', { count: 'exact', head: true })
-        .eq('chat_jid', msg.chatJid ?? '')
-        .eq('auto', true)
-        .gte('created_at', new Date(Date.now() - 6 * 3_600_000).toISOString());
-      if (!count) {
-        intent = 'course_info';
-        greeting = data.templates.greeting || DEFAULT_DV_TEMPLATES.greeting;
-      }
+      intent = 'course_info';
+      greeting = data.templates.greeting || DEFAULT_DV_TEMPLATES.greeting;
     }
     // 3. AI for anything still unclear.
     if (intent === 'none' && text && aiClassifyEnabled() && looksLikeQuestion(text)) {

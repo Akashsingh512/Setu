@@ -169,7 +169,7 @@ export const DV_PLACEHOLDERS = [
 export type DvPlaceholder = (typeof DV_PLACEHOLDERS)[number];
 
 export const DV_TEMPLATE_INFO: Record<DvTemplateKind, { label: string; when: string }> = {
-  greeting: { label: 'Welcome', when: 'Someone says hello, hi, namaste or Jai Gurudev in a private chat (at most once every 6 hours per chat).' },
+  greeting: { label: 'Welcome', when: 'Someone says hello, hi, namaste or Jai Gurudev in a private chat.' },
   course_details: { label: 'One program', when: 'The question is about one course and it has an upcoming session.' },
   course_list: { label: 'List of programs', when: 'No course was named and several sessions are coming up.' },
   no_upcoming: { label: 'No upcoming session', when: 'The course exists but nothing is scheduled yet.' },

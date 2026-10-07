@@ -1,5 +1,5 @@
 -- A "Welcome" course response: the reply to a plain greeting ("hello", "Jai Gurudev")
--- in a private chat, at most once every 6 hours per chat (the gateway checks that).
+-- in a private chat, every time (they wrote first).
 -- Edited on the Course responses page like the others; no row = the built-in text.
 
 alter table public.dv_response_templates drop constraint dv_response_templates_kind_check;
