@@ -1,8 +1,8 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { FormMessage, type ActionState } from '@/components/form';
-import { Badge, Button, Field, Input, Select } from '@/components/ui';
-import { saveSevaLimit, saveSevaSettings, setLeadAllotter, setWhatsAppApprover } from '../../seva-actions';
+import { Badge, Button, Field, Input, Select, Textarea } from '@/components/ui';
+import { saveAllotMessages, saveSevaLimit, saveSevaSettings, setLeadAllotter, setWhatsAppApprover } from '../../seva-actions';
 
 const toNum = (v: string): number | null => (v.trim() === '' ? null : Number(v));
 const show = (v: number | null) => (v === null ? '' : String(v));
@@ -230,6 +230,69 @@ export function LeadAllotters({ people }: { people: AllotterCandidate[] }) {
         </Button>
       </div>
       {error ? <p className="px-5 pb-4 text-sm text-danger">{error}</p> : null}
+    </div>
+  );
+}
+
+const ALLOT_PLACEHOLDERS = ['{{name}}', '{{allotter}}', '{{count}}', '{{leads}}', '{{hours}}', '{{example_code}}'];
+const WELCOME_PLACEHOLDERS = [...ALLOT_PLACEHOLDERS, '{{app_url}}', '{{mobile}}', '{{password}}'];
+
+/** The WhatsApp messages sent with allotted leads, editable with placeholders. */
+export function AllotMessages({
+  allot,
+  welcome,
+  defaults,
+}: {
+  allot: string | null;
+  welcome: string | null;
+  defaults: { allot: string; welcome: string };
+}) {
+  const [a, setA] = useState(allot ?? defaults.allot);
+  const [w, setW] = useState(welcome ?? defaults.welcome);
+  const [state, setState] = useState<ActionState | undefined>();
+  const [pending, start] = useTransition();
+  const chips = (list: string[], add: (p: string) => void) => (
+    <p className="mt-1 flex flex-wrap gap-1 text-xs text-ink-muted">
+      {list.map((p) => (
+        <button key={p} type="button" className="rounded bg-canvas px-1.5 py-0.5 font-mono hover:text-ink" onClick={() => add(p)}>
+          {p}
+        </button>
+      ))}
+    </p>
+  );
+  return (
+    <div className="flex flex-col gap-4 p-5">
+      <FormMessage state={state} />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Field label="Leads allotted (someone already in Setu)" htmlFor="m-allot" hint="Must contain {{leads}}.">
+          <Textarea id="m-allot" rows={12} value={a} maxLength={3000} onChange={(e) => setA(e.target.value)} className="font-mono text-xs" />
+          {chips(ALLOT_PLACEHOLDERS, (p) => setA((v) => v + p))}
+        </Field>
+        <Field label="Welcome + leads (someone the bot just added)" htmlFor="m-welcome" hint="Must contain {{leads}}, {{mobile}} and {{password}}.">
+          <Textarea id="m-welcome" rows={12} value={w} maxLength={3000} onChange={(e) => setW(e.target.value)} className="font-mono text-xs" />
+          {chips(WELCOME_PLACEHOLDERS, (p) => setW((v) => v + p))}
+        </Field>
+      </div>
+      <p className="text-xs text-ink-muted">
+        {'{{name}}'} = their first name · {'{{allotter}}'} = who allotted · {'{{count}}'} = number of leads · {'{{leads}}'} = the list of leads ·{' '}
+        {'{{hours}}'} = hours to call · {'{{example_code}}'} = the first lead code · {'{{app_url}}'} / {'{{mobile}}'} / {'{{password}}'} = how to sign in
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button disabled={pending} onClick={() => start(async () => setState(await saveAllotMessages(a, w)))}>
+          Save messages
+        </Button>
+        <Button
+          variant="ghost"
+          disabled={pending}
+          onClick={() => {
+            setA(defaults.allot);
+            setW(defaults.welcome);
+            start(async () => setState(await saveAllotMessages('', '')));
+          }}
+        >
+          Back to the standard text
+        </Button>
+      </div>
     </div>
   );
 }

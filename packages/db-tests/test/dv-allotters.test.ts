@@ -123,3 +123,16 @@ describe('adding the person when they are not in Setu', () => {
   });
 });
 
+
+describe('editable allot messages', () => {
+  it('a custom message is used, placeholders filled; the welcome must keep the sign-in details', async () => {
+    await q(f.db, f.admin, `select public.dv_set_lead_allotter($1, true)`, [f.teacherA]);
+    await expect(q(f.db, f.admin, `select public.dv_save_allot_messages('Hi {{name}}', null)`)).rejects.toThrow(/must contain \{\{leads\}\}/);
+    await expect(q(f.db, f.admin, `select public.dv_save_allot_messages(null, 'Hi {{name}} {{leads}}')`)).rejects.toThrow(/cannot sign in/);
+    await expect(q(f.db, f.volA1, `select public.dv_save_allot_messages('x {{leads}}', null)`)).rejects.toThrow(/Not authorised/);
+    await q(f.db, f.admin, `select public.dv_save_allot_messages($1, null)`, ['Hari Om {{name}}! {{allotter}} sent {{count}}:\n{{leads}}Call in {{hours}}h.']);
+    await allot(f.teacherA, 1, 'Srikesh');
+    const [sent] = await outboxTo(f.volA1);
+    expect(sent!.body).toMatch(/^Hari Om Srikesh! .+ sent 1:\n• .+\(L-\d+\)\nCall in \d+h\.$/);
+  });
+});

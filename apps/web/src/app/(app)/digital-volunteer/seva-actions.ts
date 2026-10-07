@@ -120,6 +120,15 @@ export async function unlinkSender(senderJid: string): Promise<ActionState> {
   return { ok: true, message: 'Forgotten.' };
 }
 
+export async function saveAllotMessages(allot: string, welcome: string): Promise<ActionState> {
+  if (allot.length > 3000 || welcome.length > 3000) return { error: 'A message is too long (3000 characters max).' };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('dv_save_allot_messages', { p_allot: allot, p_welcome: welcome });
+  if (error) return { error: friendlyError(error) };
+  revalidatePath('/digital-volunteer/seva/limits');
+  return { ok: true, message: 'Saved. The next allotted leads use these messages.' };
+}
+
 export async function setLeadAllotter(profileId: string, enabled: boolean): Promise<ActionState> {
   if (!uuid.safeParse(profileId).success) return { error: 'Invalid person.' };
   const supabase = await createClient();

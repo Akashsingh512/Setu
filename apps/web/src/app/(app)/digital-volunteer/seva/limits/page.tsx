@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Card, CardHeader } from '@/components/ui';
 import { requireDv } from '@/lib/dv';
 import { createClient } from '@/lib/supabase/server';
-import { ApproverToggle, DefaultsForm, LeadAllotters, VolunteerLimitRow, type AllotterCandidate, type LimitRow } from './limit-forms';
+import { AllotMessages, ApproverToggle, DefaultsForm, LeadAllotters, VolunteerLimitRow, type AllotterCandidate, type LimitRow } from './limit-forms';
 
 export const metadata: Metadata = { title: 'Seva & allotting' };
 
@@ -15,6 +15,10 @@ export default async function SevaLimitsPage() {
     supabase.rpc('dv_seva_candidates'),
     supabase.rpc('dv_approver_candidates'),
     access.isSuperAdmin ? supabase.rpc('dv_allotter_candidates') : Promise.resolve({ data: null }),
+  ]);
+  const [{ data: defAllot }, { data: defWelcome }] = await Promise.all([
+    supabase.rpc('dv_allot_default_message', { p_kind: 'allot' }),
+    supabase.rpc('dv_allot_default_message', { p_kind: 'welcome' }),
   ]);
   // eslint-disable-next-line react-hooks/purity -- server component: rendered once per request
   const now = Date.now();
@@ -80,6 +84,19 @@ export default async function SevaLimitsPage() {
           ) : (
             <p className="px-5 py-4 text-sm text-ink-muted">Run the latest database migration to use this.</p>
           )}
+        </Card>
+      ) : null}
+      {defAllot && defWelcome ? (
+        <Card>
+          <CardHeader
+            title="Messages sent with allotted leads"
+            description="What the person gets on WhatsApp when leads are allotted to them. Write it in your own words; the {{…}} parts are filled in for each person."
+          />
+          <AllotMessages
+            allot={(settings?.allot_message as string | null) ?? null}
+            welcome={(settings?.welcome_message as string | null) ?? null}
+            defaults={{ allot: defAllot as string, welcome: defWelcome as string }}
+          />
         </Card>
       ) : null}
       <Card>
