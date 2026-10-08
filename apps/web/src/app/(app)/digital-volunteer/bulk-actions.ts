@@ -104,7 +104,7 @@ async function buildRecipients(input: z.output<typeof bulkSchema>): Promise<{ re
         const r = normalizePhone(m[0], settings.default_phone_country);
         if (r.ok) {
           phone = r.e164;
-          c = c.replace(m[0], ' ').replace(/^[\s:–-]+|[\s:–-]+$/g, '').replace(/\s+/g, ' ');
+          c = c.replace(m[0], ' ').replace(/^[\s:â€“-]+|[\s:â€“-]+$/g, '').replace(/\s+/g, ' ');
           if (!c) continue;
         }
       }
