@@ -96,12 +96,16 @@ async function buildRecipients(input: z.output<typeof bulkSchema>): Promise<{ re
     if (!cells.length) continue;
     let phone: string | null = null;
     const nameParts: string[] = [];
-    for (const c of cells) {
-      if (!phone && /\d{6,}/.test(c.replace(/[\s()-]/g, ''))) {
-        const r = normalizePhone(c, settings.default_phone_country);
+    for (const cell of cells) {
+      let c = cell;
+      // The number may share a cell with the name: "Srikesh 97912 07085".
+      const m = phone ? null : c.match(/\+?\d[\d\s().-]{4,}\d/);
+      if (m && /\d{6,}/.test(m[0].replace(/\D/g, ''))) {
+        const r = normalizePhone(m[0], settings.default_phone_country);
         if (r.ok) {
           phone = r.e164;
-          continue;
+          c = c.replace(m[0], ' ').replace(/^[\s:–-]+|[\s:–-]+$/g, '').replace(/\s+/g, ' ');
+          if (!c) continue;
         }
       }
       if (!/^(name|phone|mobile|number|whatsapp)$/i.test(c)) nameParts.push(c); // skip a header row's labels
