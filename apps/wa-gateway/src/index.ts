@@ -372,6 +372,9 @@ async function onMessage(s: WASocket, m: WAMessage) {
 
   const content = normalizeMessageContent(m.message);
   const { text, media } = textOf(content);
+  // A swipe-reply: the id of the message being answered (a volunteer answering a journey forward).
+  const quotedId =
+    content?.extendedTextMessage?.contextInfo?.stanzaId ?? content?.imageMessage?.contextInfo?.stanzaId ?? null;
   if (!text && !media) {
     // Poll votes, reactions and receipts are normal and frequent: keep them out of the info log.
     // A message with a stub type and no content means it could not be decrypted.
@@ -417,7 +420,7 @@ async function onMessage(s: WASocket, m: WAMessage) {
   // senderKnown: did we learn the sender's phone number? (WhatsApp often hides it behind a private id.)
   log.info({ id: data, chat, senderKnown: !!phone }, 'message stored');
   const groupId = group ? ((await db.from('wa_groups').select('id').eq('jid', chat).maybeSingle()).data?.id ?? null) : null;
-  await processMessage(db, { id: data as string, groupId, chatJid: chat, text }, log).catch((e: Error) =>
+  await processMessage(db, { id: data as string, groupId, chatJid: chat, text, quotedId }, log).catch((e: Error) =>
     log.warn({ err: e.message, id: data }, 'processing failed - left for a person'),
   );
 }
@@ -430,11 +433,11 @@ type OutboxRow = { id: string; chat_jid: string; kind: string; body: string | nu
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Bulk messages go out like a person sends them: the number is checked first, then
+ * Bulk and journey messages go out like a person sends them: the number is checked first, then
  * "typing…" shows for the time the pacer chose, then the message is sent.
  */
 async function humanise(s: WASocket, row: OutboxRow) {
-  if (row.kind !== 'bulk') return;
+  if (row.kind !== 'bulk' && row.kind !== 'journey') return;
   const [check] = (await s.onWhatsApp(row.chat_jid)) ?? [];
   if (!check?.exists) throw new Error('This number is not on WhatsApp');
   await s.presenceSubscribe(row.chat_jid).catch(() => {});

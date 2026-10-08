@@ -39,3 +39,12 @@ export async function requireDv(permission?: DvPermission): Promise<DvAccess> {
   if (permission && !access.can(permission)) redirect('/digital-volunteer');
   return access;
 }
+
+/** Follow-up journeys the signed-in user may start leads on (none without the permission). */
+export const getStartableJourneys = cache(async (): Promise<{ id: string; name: string }[]> => {
+  const access = await getDvAccess();
+  if (!access.can('schedule_announcements')) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase.from('dv_journeys').select('id, name').eq('active', true).order('name');
+  return error ? [] : ((data ?? []) as { id: string; name: string }[]);
+});

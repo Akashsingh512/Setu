@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { Alert, Badge, Button, Card, Select, Textarea } from '@/components/ui';
 import type { LeadStatus } from '@/lib/types';
 import { assignLeads, deleteLeads, idsForFilter, purgeLeads, restoreLeads, unassignLeads, type AssignResult } from './actions';
+import { StartJourney } from '../digital-volunteer/journeys/controls';
 import { BriefOptions } from './brief-options';
 import { LeadCards, type LeadCardData, type MessageContext } from './lead-cards';
 
@@ -41,6 +42,7 @@ export function LeadTable({
   canDelete = false,
   canPurge = false,
   deletedView = false,
+  journeys = [],
 }: {
   rows: LeadRow[];
   volunteers: { id: string; name: string; accepting: boolean }[];
@@ -57,8 +59,11 @@ export function LeadTable({
   canPurge?: boolean;
   /** Showing the Deleted list. */
   deletedView?: boolean;
+  /** Follow-up journeys this person may start people on (Digital Volunteer "Announcements"). */
+  journeys?: { id: string; name: string }[];
 }) {
-  const canSelect = deletedView ? canDelete || canPurge : canAssign || canDelete;
+  const canSelect = deletedView ? canDelete || canPurge : canAssign || canDelete || journeys.length > 0;
+  const [journeyDialog, setJourneyDialog] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [allMatching, setAllMatching] = useState(false);
   const [dialog, setDialog] = useState(false);
@@ -196,6 +201,11 @@ export function LeadTable({
                     Unassign
                   </Button>
                 ) : null}
+                {journeys.length ? (
+                  <Button variant="secondary" onClick={() => setJourneyDialog(true)} disabled={pending}>
+                    Start journey
+                  </Button>
+                ) : null}
                 {canDelete ? (
                   <Button
                     variant="danger"
@@ -286,6 +296,34 @@ export function LeadTable({
           </tbody>
         </table>
       </Card>
+
+      {journeyDialog ? (
+        <div className="fixed inset-0 z-30 flex items-end justify-center bg-scrim p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="journey-title">
+          <Card className="w-full max-w-md p-5">
+            <h2 id="journey-title" className="text-lg font-semibold">
+              Start a journey for {count} lead(s)
+            </h2>
+            <p className="mt-1 mb-4 text-sm text-ink-muted">
+              Its steps begin for each of them: messages from the Setu number, calls by their volunteer, program invites. Do not contact leads are skipped.
+            </p>
+            <StartJourney
+              journeys={journeys}
+              resolveIds={chosenIds}
+              onDone={(message) => {
+                setResult({ ok: true, message });
+                setSelected(new Set());
+                setAllMatching(false);
+                setJourneyDialog(false);
+              }}
+            />
+            <div className="mt-5 flex justify-end">
+              <Button variant="secondary" onClick={() => setJourneyDialog(false)}>
+                Cancel
+              </Button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
 
       {dialog ? (
         <div

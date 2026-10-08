@@ -2,7 +2,8 @@
 // build a reply from verified CRM data, and hand both to the database, which
 // decides whether the reply is sent, suggested, or not used (dv_record_intent).
 //
-// Order: an approver's SEND/EDIT/SKIP or YES/NO -> an allotter's "allot N leads to X" ->
+// Order: an approver's SEND/EDIT/SKIP or YES/NO -> STOP -> a volunteer's swipe-reply to a
+// journey forward -> an allotter's "allot N leads to X" ->
 // a volunteer's comment on their lead -> reply rules -> built-in keyword
 // detection -> AI classification for anything still unclear -> AI draft when a
 // real question has no answer in Setu (a draft is never sent without a person).
@@ -114,7 +115,7 @@ function factsFor(data: Data, sessions: Data['sessions']): string {
 
 export async function processMessage(
   db: SupabaseClient,
-  msg: { id: string; groupId: string | null; chatJid?: string; text: string | null },
+  msg: { id: string; groupId: string | null; chatJid?: string; text: string | null; quotedId?: string | null },
   log: { warn: (o: object, m: string) => void; info: (o: object, m: string) => void },
 ): Promise<void> {
   const text = msg.text?.trim() ?? '';
@@ -155,6 +156,23 @@ export async function processMessage(
     if (error) log.warn({ err: error.message, id: msg.id }, 'opt-out failed');
     else if ((res as { handled?: boolean } | null)?.handled) {
       log.info({ id: msg.id }, 'opted out of bulk messages');
+      return;
+    }
+  }
+
+  // A volunteer answering someone on a journey: a swipe-reply to the forwarded message,
+  // or "Reply L-000037 …". It goes to that person from the Setu number.
+  const replyCmd = msg.groupId ? null : /^\s*reply\s+(L-?\d{3,})[\s:,-]*([\s\S]*)$/i.exec(text);
+  if (!msg.groupId && text && (msg.quotedId || replyCmd)) {
+    const { data: res, error } = await db.rpc('dv_journey_volunteer_reply', {
+      p_message_id: msg.id,
+      p_quoted_id: replyCmd ? null : msg.quotedId,
+      p_lead_code: replyCmd?.[1] ?? null,
+      p_text: replyCmd ? replyCmd[2]!.trim() : null,
+    });
+    if (error) log.warn({ err: error.message, id: msg.id }, 'journey reply check failed');
+    else if ((res as { handled?: boolean } | null)?.handled) {
+      log.info({ id: msg.id, sent: (res as { sent?: boolean }).sent }, 'volunteer answered a journey participant');
       return;
     }
   }
@@ -206,6 +224,13 @@ export async function processMessage(
   const sessions = data.sessions.filter((s) => s.team_id === null || s.team_id === team);
   const where = msg.groupId ? 'group' : 'direct';
   const usableRules = data.rules.filter((r) => (where === 'group' ? r.in_groups : r.in_direct));
+  // Someone on a follow-up journey: Setu may answer by itself, and their volunteer is told.
+  type Journey = { journey: boolean; ai_auto?: boolean; name?: string; volunteer?: string | null };
+  let journey: Journey | null = null;
+  if (!msg.groupId) {
+    const { data: j, error } = await db.rpc('dv_journey_participant', { p_message_id: msg.id });
+    if (!error && (j as Journey | null)?.journey) journey = j as Journey;
+  }
 
   let intent: string = 'none';
   let source: 'keywords' | 'ai' | 'rule' = 'keywords';
@@ -236,7 +261,7 @@ export async function processMessage(
         else if (ai.intent === 'question') aiQuestion = true;
         else intent = ai.intent;
         courseHintIds = ai.courseIds;
-      } else if (!msg.groupId && text.includes('?')) {
+      } else if (!msg.groupId && (text.includes('?') || journey?.ai_auto)) {
         // A real question in a private chat that the AI did not place: draft a reply
         // anyway. A draft always waits for a person, so this never sends by itself.
         aiQuestion = true;
@@ -276,9 +301,16 @@ export async function processMessage(
     if (answer.kind === 'fallback') aiQuestion = true;
   }
 
-  // 4. AI draft (always waits for a person).
+  // Someone on a journey is answered like family, even a simple "thank you".
+  if (journey?.ai_auto && intent === 'none' && !rule && text) aiQuestion = true;
+
+  // 4. AI draft (waits for a person, except for someone on a journey that allows it).
   if (aiQuestion && aiDraftEnabled()) {
-    const drafted = await draftReply(text, factsFor(data, sessions));
+    const drafted = await draftReply(
+      text,
+      factsFor(data, sessions),
+      journey ? { journey: journey.name ?? '', volunteer: journey.volunteer ?? null } : undefined,
+    );
     if (drafted) {
       intent = 'course_info';
       reply = drafted;
@@ -287,6 +319,22 @@ export async function processMessage(
     }
   }
   if (aiQuestion && intent === 'none') intent = 'handover'; // a real question nobody answered: flag it for a person
+
+  if (journey?.ai_auto && reply && intent === 'course_info') {
+    const { data: res, error } = await db.rpc('dv_journey_on_reply', {
+      p_message_id: msg.id,
+      p_reply: reply,
+      p_media_path: poster,
+      p_intent: intent,
+      p_source: source === 'rule' ? 'keywords' : source,
+      p_reply_kind: replyKind,
+    });
+    if (error) log.warn({ err: error.message, id: msg.id }, 'journey reply failed');
+    else if ((res as { replied?: boolean } | null)?.replied) {
+      log.info({ id: msg.id, replyKind, result: res }, 'journey participant answered');
+      return;
+    }
+  }
 
   const { data: result, error } = await db.rpc('dv_record_intent', {
     p_message_id: msg.id,
@@ -303,6 +351,11 @@ export async function processMessage(
   if (error) log.warn({ err: error.message, id: msg.id }, 'could not record intent');
   // e.g. {intent: course_info, status: needs_review, send: pending_approval} = suggestion waiting in the Inbox
   else log.info({ id: msg.id, intent, source, rule: rule?.name, replyKind, result }, 'message analysed');
+  // A person answers this one: their volunteer is told (and the journey may wait).
+  if (journey) {
+    const { error: fwdError } = await db.rpc('dv_journey_on_reply', { p_message_id: msg.id });
+    if (fwdError) log.warn({ err: fwdError.message, id: msg.id }, 'journey forward failed');
+  }
 }
 
 /** Where people sign in; sent to volunteers an allotter adds. */

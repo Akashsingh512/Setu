@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { formatPhone } from '@crm/shared';
 import { ButtonLink, Card, EmptyState, Input, PageHeader, Select } from '@/components/ui';
 import { getOrgSettings, requireProfile } from '@/lib/auth';
+import { getStartableJourneys } from '@/lib/dv';
 import { getFeatures } from '@/lib/features';
 import { getCourses, getProfileNames, getStatuses, getVisibleProfiles, statusMap } from '@/lib/data';
 import { formatDateTime, relativeTime } from '@/lib/format';
@@ -25,7 +26,7 @@ type LeadWithDeadline = Lead & {
 export default async function LeadsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   // Start the lookups immediately; they don't depend on the profile.
   const lookups = Promise.all([getStatuses(), getCourses(), getVisibleProfiles(), getProfileNames(), getOrgSettings()]);
-  const [profile, sp, features] = await Promise.all([requireProfile(), searchParams, getFeatures()]);
+  const [profile, sp, features, journeys] = await Promise.all([requireProfile(), searchParams, getFeatures(), getStartableJourneys()]);
   const filters = readLeadFilters(sp);
   const page = Math.max(1, Number(Array.isArray(sp.page) ? sp.page[0] : sp.page) || 1);
   // Feature access "See the team's leads": the team view; otherwise only their own leads.
@@ -230,6 +231,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
           canDelete={features.has('edit_leads')}
           canPurge={profile.role === 'super_admin'}
           deletedView={filters.view === 'deleted'}
+          journeys={filters.view === 'deleted' ? [] : journeys}
         />
       ) : (
         <LeadCards rows={cards} ctx={ctx} />

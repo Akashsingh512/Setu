@@ -7,10 +7,13 @@ import { Alert, Badge, ButtonLink, Card, CardHeader, EmptyState, PageHeader } fr
 import { getOrgSettings, requireProfile } from '@/lib/auth';
 import { getCourses, getProfileNames, getStatuses, getVisibleProfiles, statusMap } from '@/lib/data';
 import { formatDate, formatDateTime, relativeTime } from '@/lib/format';
+import { getStartableJourneys } from '@/lib/dv';
 import { getFeatures } from '@/lib/features';
 import { signPosters } from '@/lib/posters';
 import { createClient } from '@/lib/supabase/server';
 import type { CallAttempt, FollowUp, FollowUpComment, Lead, LeadActivity, LeadAssignment, LeadNote, MessageTemplate, UpcomingSession } from '@/lib/types';
+import { EnrollmentControls, StartJourney } from '../../digital-volunteer/journeys/controls';
+import { JOURNEY_STATUS } from '../../digital-volunteer/journeys/status';
 import { AssignBox, ContactPanel, DeleteLeadButtons, FollowUpList, NoteForm, StatusForm } from './panels';
 
 export const metadata: Metadata = { title: 'Lead' };
@@ -33,7 +36,12 @@ const ACTIVITY_LABELS: Record<string, string> = {
   whatsapp_received: 'WhatsApp message from the lead',
   whatsapp_sent: 'WhatsApp sent from the Setu number',
   follow_up_comment: 'Follow-up comment',
+  journey_started: 'Journey started',
+  journey_step: 'Journey step',
+  journey_completed: 'Journey finished',
+  journey_stopped: 'Journey stopped',
 };
+const JOURNEY_STEP: Record<string, string> = { message: 'message sent', call_task: 'call task for the volunteer', program_invite: 'program invite sent' };
 
 export default async function LeadPage({
   params,
@@ -68,14 +76,28 @@ export default async function LeadPage({
   const historyIds = [lead.id, ...(merged ?? []).map((m) => m.id as string)];
 
   // Round trip 2: history across the lead and any merged duplicates.
-  const [profiles, assignments, calls, notes, activities, comments] = await Promise.all([
+  const [profiles, assignments, calls, notes, activities, comments, journeys, enrollments] = await Promise.all([
     staff ? getVisibleProfiles() : Promise.resolve([]),
     supabase.from('lead_assignments').select('*').in('lead_id', historyIds).order('assigned_at', { ascending: false }),
     supabase.from('call_attempts').select('*').in('lead_id', historyIds).order('attempted_at', { ascending: false }),
     supabase.from('lead_notes').select('*').in('lead_id', historyIds).order('created_at', { ascending: false }),
     supabase.from('lead_activities').select('*').in('lead_id', historyIds).order('created_at', { ascending: false }).limit(100),
     supabase.from('follow_up_comments').select('*').in('lead_id', historyIds).order('created_at').limit(200),
+    getStartableJourneys(),
+    supabase
+      .from('dv_journey_enrollments')
+      .select('id, status, status_reason, next_at, journey:dv_journeys(name)')
+      .eq('lead_id', lead.id)
+      .order('started_at', { ascending: false })
+      .limit(10),
   ]);
+  const leadJourneys = (enrollments.data ?? []) as unknown as {
+    id: string;
+    status: string;
+    status_reason: string | null;
+    next_at: string | null;
+    journey: { name: string } | null;
+  }[];
 
   const upcoming = (sessions.data ?? []) as UpcomingSession[];
   const posters = await signPosters(
@@ -235,6 +257,14 @@ export default async function LeadPage({
                         {a.data.preview ? `“${String(a.data.preview)}”` : null}
                       </span>
                     ) : null}
+                    {a.type.startsWith('journey_') && a.data.journey ? (
+                      <span className="mt-0.5 block whitespace-pre-wrap text-ink-muted">
+                        {String(a.data.journey)}
+                        {a.type === 'journey_step' ? `, step ${String(a.data.step)}: ${a.data.note ? String(a.data.note) : (JOURNEY_STEP[String(a.data.kind)] ?? '')}` : ''}
+                        {a.data.reason ? ` (${String(a.data.reason)})` : ''}
+                        {a.data.preview ? ` “${String(a.data.preview)}”` : ''}
+                      </span>
+                    ) : null}
                     {a.type === 'whatsapp_received' ? (
                       <span className="mt-0.5 block whitespace-pre-wrap text-ink-muted">
                         {a.data.preview ? `“${String(a.data.preview)}”` : `[${String(a.data.media_type ?? 'attachment')}]`}
@@ -324,6 +354,27 @@ export default async function LeadPage({
               when: formatDateTime(c.created_at, settings.default_timezone),
             }))}
           />
+
+          {leadJourneys.length > 0 || (journeys.length > 0 && canAct && !lead.archived_at && !blocked) ? (
+            <Card className="p-5 text-sm">
+              <h2 className="mb-3 font-semibold">Follow-up journeys</h2>
+              {leadJourneys.length ? (
+                <ul className="mb-3 space-y-2">
+                  {leadJourneys.map((e) => (
+                    <li key={e.id} className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{e.journey?.name ?? 'Journey'}</span>
+                      <Badge tone={JOURNEY_STATUS[e.status]?.tone ?? 'neutral'}>{JOURNEY_STATUS[e.status]?.label ?? e.status}</Badge>
+                      {journeys.length ? <EnrollmentControls id={e.id} status={e.status} /> : null}
+                      <span className="block w-full text-xs text-ink-muted">
+                        {e.status === 'active' && e.next_at ? `Next step around ${formatDateTime(e.next_at, settings.default_timezone)}` : (e.status_reason ?? '')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {journeys.length && canAct && !lead.archived_at && !blocked ? <StartJourney journeys={journeys} leadIds={[lead.id]} /> : null}
+            </Card>
+          ) : null}
 
           {staff && features.has('assign_leads') && !lead.archived_at ? (
             <AssignBox

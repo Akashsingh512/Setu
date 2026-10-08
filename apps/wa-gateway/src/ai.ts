@@ -178,15 +178,27 @@ export async function classifyWithAi(
  * A short reply drafted only from `facts`. Null when drafting is off or fails.
  * The database never sends a draft without a person's approval.
  */
-export async function draftReply(text: string, facts: string): Promise<string | null> {
+export async function draftReply(
+  text: string,
+  facts: string,
+  journey?: { journey: string; volunteer: string | null },
+): Promise<string | null> {
   if (!aiDraftEnabled()) return null;
+  // Someone on a follow-up journey: answered straight away, warmly, like family.
+  const journeyNote = journey
+    ? '\nThis person did an Art of Living program and is on a follow-up journey. Your reply is sent straight away. ' +
+      'Be warm and caring, like a member of their Art of Living family. For thanks or sharing, respond kindly. ' +
+      `For personal, health or practice problems, comfort them briefly and say ${journey.volunteer ? `${journey.volunteer}, their volunteer,` : 'a volunteer'} will call them soon. ` +
+      'Never give medical advice.'
+    : '';
   const system =
     'You draft WhatsApp replies for an Art of Living centre. A volunteer checks every draft before it is sent.\n' +
     'Rules:\n' +
     '- Use ONLY the facts provided. Never invent or guess dates, times, venues, fees, links, phone numbers or names.\n' +
     '- If the facts do not answer the question, say kindly that a volunteer will reply soon.\n' +
     '- Answer in the same language and style as the message (English, Hindi or Hinglish).\n' +
-    '- Keep it short and warm: at most 80 words, plain text (WhatsApp *bold* is fine). No sign-off.';
+    '- Keep it short and warm: at most 80 words, plain text (WhatsApp *bold* is fine). No sign-off.' +
+    journeyNote;
   const r = await complete(system, `Facts from Setu:\n${facts || '(no facts available)'}\n\nMessage to answer:\n${text.slice(0, 1000)}`, null, 4000);
   if (typeof r !== 'string') return null;
   return r.trim().slice(0, 1500) || null;
